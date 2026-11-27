@@ -5,6 +5,7 @@ Adds a small "↩ Reply" button under each Claude message. Tap it to quote that 
 - Terminal and desktop: the quote goes straight into the prompt box above anything you already typed.
 - Mobile (Remote Control): the phone's own message box can't be filled from the session, so the quote is held. A "Replying to: …" band appears with a Cancel button, and the next message you send carries the quote at its top.
 - Desktop right-click on highlighted text: "Reply to selection" quotes only what you highlighted.
+- After `/reload-plugins`, messages drawn before the reload get their button back too: each load asks every message to draw again once.
 
 ## Example
 
