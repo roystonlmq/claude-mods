@@ -2,5 +2,9 @@
   "name": "readable-output",
   "version": "0.3.0",
   "description": "Status reports in one fixed shape, with each ask stepped through one at a time (Yes, No, Change, Skip) and one Send for all answers; the card takes its colours from reply-colors",
+  "author": {
+    "name": "roystonlmq"
+  },
+  "license": "MIT",
   "types": "./types/index.d.ts"
 }

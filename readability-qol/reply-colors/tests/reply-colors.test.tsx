@@ -345,3 +345,14 @@ describe('the README examples', () => {
     expect(spaced(parseLines(QOL_README_EXAMPLE)).map(line => line.kind)).toEqual(['text', 'blank', 'item', 'blank', 'item'])
   })
 })
+
+describe('links', () => {
+  test('only http and https links stay clickable, others draw as plain label text', () => {
+    expect(inline('see [docs](https://example.com/a)')).toContainEqual({ text: 'docs', role: 'link', href: 'https://example.com/a' })
+    for (const href of ['javascript:void0', 'file:///etc/passwd', 'vscode://open']) {
+      const spans = inline(`see [docs](${href})`)
+      expect(spans.some(span => span.href !== undefined)).toBe(false)
+      expect(spans.map(span => span.text).join('')).toBe('see docs')
+    }
+  })
+})

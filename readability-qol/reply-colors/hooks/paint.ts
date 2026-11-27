@@ -125,6 +125,8 @@ export const parseLines = (text: string): Line[] => {
 const INLINE =
   /(?<code>(?<ticks>`+)(?<codeBody>[^`]|[^`].*?[^`])\k<ticks>(?!`))|(?<link>\[(?<label>[^\]\n]+)\]\((?<href>[^)\s]+)(?:\s+"[^"]*")?\))|(?<angle><(?<angleHref>https?:\/\/[^>\s]+)>)|(?<bare>https?:\/\/[^\s<>()\]]+[^\s<>()\].,;:!?'"])|(?<bold>(?<boldMark>\*\*|__)(?<boldBody>(?!\s).+?)(?<!\s)\k<boldMark>)|(?<italic>\*(?<italicBody>(?![\s*]).+?)(?<![\s*])\*)|(?<escape>\\(?<escaped>[\\`*_{}[\]()#+\-.!>|~]))/g
 
+const isWebHref = (href: string) => /^https?:\/\//i.test(href)
+
 export const inline = (text: string): Span[] => {
   const spans: Span[] = []
   const plain = (value: string, extra: Omit<Span, 'text'> = {}) => {
@@ -142,7 +144,7 @@ export const inline = (text: string): Span[] => {
     plain(text.slice(at, match.index))
     at = match.index! + match[0].length
     if (groups.code !== undefined) spans.push({ text: groups.codeBody!, role: 'code' })
-    else if (groups.link !== undefined) spans.push({ text: groups.label!, role: 'link', href: groups.href! })
+    else if (groups.link !== undefined) spans.push(isWebHref(groups.href!) ? { text: groups.label!, role: 'link', href: groups.href! } : { text: groups.label! })
     else if (groups.angle !== undefined) spans.push({ text: groups.angleHref!, role: 'link', href: groups.angleHref! })
     else if (groups.bare !== undefined) spans.push({ text: groups.bare, role: 'link', href: groups.bare })
     else if (groups.bold !== undefined) spans.push({ text: groups.boldBody!, bold: true })

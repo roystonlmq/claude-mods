@@ -385,7 +385,7 @@ describe('card spacing', () => {
     const ui = await $.ui.mount(message(SAMPLE_ASK, 'terminal', 'ask-rows'))
     const root = (await ui.drawn()) as RenderElement
     await ui.unmount()
-    const rows = (root.children ?? []).flat(Infinity) as RenderElement[]
+    const rows = ('children' in root ? root.children ?? [] : []).flat(Infinity) as RenderElement[]
     const rowText = (row: RenderElement) => runsOf(row).map(run => run.text).join('')
     const kinds = rows.map(row => (row.type === 'Markdown' ? 'summary' : rowText(row).trim() === '' ? 'blank' : rowText(row).startsWith('Needs you  ask') ? 'needs-you' : 'other'))
     expect(kinds.slice(0, 5)).toEqual(['other', 'blank', 'summary', 'blank', 'needs-you'])
