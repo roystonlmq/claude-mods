@@ -27,8 +27,8 @@ describe('parser', () => {
 
   test('keeps code names on the Ref line, not in the title', async () => {
     const first = parsed(GOOD_REPORT).asks[0]!
-    expect(first.title).toBe('Stop the cleanup job deleting two Acme bot changes that are waiting for Dana')
-    expect(first.ref).toBe('PR app#133 · WP1')
+    expect(first.title).toBe('Stop the cleanup job deleting two Acme bot changes that are waiting for Sam')
+    expect(first.ref).toBe('PR app#901 · WP9')
   })
 
   test('splits each promote failure into what, why and why it is safe', async () => {
@@ -44,7 +44,7 @@ describe('parser', () => {
   test('reads a quoted draft under Draft and the options of a choice', async () => {
     const report = parsed(GOOD_REPORT)
     expect(report.asks[4]!.fields.draft).toBe(
-      'Hi Dana, two bot changes waiting for you are now protected until 15/12, so nothing you are reviewing will be cleared.',
+      'Hi Sam, two bot changes waiting for you are now protected until 15/12, so nothing you are reviewing will be cleared.',
     )
     expect(report.asks[6]!.options.map(option => option.label)).toEqual(['A', 'B'])
     expect(report.asks[6]!.options[1]!.example).toBe('a motorbike rider sees "For cars only" above the toll article.')
@@ -101,7 +101,7 @@ describe('required parts', () => {
     const merge = problemFor(BAD_REPORT, 1)
     expect(merge.some(part => part.startsWith('when it happens'))).toBe(false)
     expect(merge.includes('"No means"')).toBe(true)
-    expect(merge.includes('plain words instead of code names (move WP1 to the Ref line)')).toBe(true)
+    expect(merge.includes('plain words instead of code names (move WP9 to the Ref line)')).toBe(true)
   })
 
   test('a restorable delete must say for how long', async () => {
@@ -155,7 +155,7 @@ describe('required parts', () => {
     expect(hasWhen('on 29/11 they stay')).toBe(true)
     expect(hasWhen('goes live today at 16:00')).toBe(true)
     expect(hasWhen('it stays')).toBe(false)
-    expect(codeNamesIn('merge PR #133 for WP1 at 6ad1d2c9')).toEqual(['PR #133', 'WP1', '6ad1d2c9'])
+    expect(codeNamesIn('merge PR #901 for WP9 at 9c8b7a6f')).toEqual(['PR #901', 'WP9', '9c8b7a6f'])
     expect(codeNamesIn('Acme riders on 29/11')).toEqual([])
   })
 })

@@ -158,7 +158,7 @@ describe('markdown and word rules', () => {
   })
 
   test('identifiers and versions keep their digits plain', () => {
-    const roles = paint(inline('ASD-STE100 on v2.1 and PR #133 took 3 runs'))
+    const roles = paint(inline('ASD-STE100 on v2.1 and PR #901 took 3 runs'))
       .filter(span => span.role === 'number')
       .map(span => span.text)
     expect(roles).toEqual(['3'])

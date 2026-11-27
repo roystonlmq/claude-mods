@@ -83,7 +83,7 @@ describe('step-through', () => {
       expect(await ui.find({ type: 'Text', text: /on 29\/11 these two changes stay/ })).toBeDefined()
       expect(await ui.find({ type: 'Button', key: 'yes-1' })).toBeDefined()
       expect(await ui.find({ type: 'Button', key: 'yes-2' })).toBe(undefined)
-      expect(await ui.find({ type: 'Text', text: /Ref: PR app#133 · WP1/ })).toBeDefined()
+      expect(await ui.find({ type: 'Text', text: /Ref: PR app#901 · WP9/ })).toBeDefined()
       await ui.unmount()
     }
   })
@@ -111,7 +111,7 @@ describe('step-through', () => {
   test('the Ref line is always shown, with no Details button to hide it', async ($, on) => {
     engine(on)
     const ui = await $.ui.mount(message(GOOD_FENCED, 'terminal'))
-    expect(await ui.find({ type: 'Text', text: /Ref: PR app#133 · WP1/ })).toBeDefined()
+    expect(await ui.find({ type: 'Text', text: /Ref: PR app#901 · WP9/ })).toBeDefined()
     expect(await ui.find({ type: 'Button', key: 'details-1' })).toBe(undefined)
     await ui.unmount()
   })
