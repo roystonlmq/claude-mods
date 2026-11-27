@@ -4,7 +4,7 @@ import type { On } from 'claude-code'
 
 import type { RenderElement } from 'claude-code'
 
-import { BAD_REPORT, GOOD_REPORT, SAMPLE_ASK, PLAIN_CHAT, PROMOTE_NO_FAILURE_REASON } from './fixtures'
+import { BAD_REPORT, GOOD_REPORT, SAMPLE_ASK, PLAIN_CHAT, PROMOTE_NO_FAILURE_REASON, PROSE_ANSWER_WITH_ASK } from './fixtures'
 
 const PLUGIN = 'readable-output'
 const SURFACES = ['terminal', 'desktop', 'vscode', 'mobile'] as const
@@ -29,8 +29,9 @@ const band = (surface: Surface) =>
 
 const REPORT_AT = new Date(2026, 10, 25, 13, 36).getTime()
 
-const engine = (on: On, isFilled = true, clock = () => REPORT_AT) => {
+const engine = (on: On, isFilled = true, clock = () => REPORT_AT, draft = '') => {
   const filled: string[] = []
+  const fillModes: string[] = []
   const submitted: string[] = []
   const toasts: string[] = []
   on('ui.render', ($, e) => {
@@ -38,8 +39,12 @@ const engine = (on: On, isFilled = true, clock = () => REPORT_AT) => {
     return <Text>engine row</Text>
   })
   on('clock.now', () => ({ value: clock() }))
+  on('prompt.read', () => ({ value: { text: draft, cursor: draft.length } }))
   on('prompt.fill', (_, e) => {
-    if (isFilled) filled.push(e.text)
+    if (isFilled) {
+      filled.push(e.text)
+      fillModes.push(String(e.mode ?? 'replace'))
+    }
     return isFilled ? { isFilled: true } : { isFilled: false, refusal: 'no_composer' as const }
   })
   on('ui.toast', (_, e) => {
@@ -50,7 +55,7 @@ const engine = (on: On, isFilled = true, clock = () => REPORT_AT) => {
     submitted.push(e.text)
     return { text: e.text }
   })
-  return { filled, submitted, toasts }
+  return { filled, fillModes, submitted, toasts }
 }
 
 const press = async ($: Engine, text: string, surface: Surface, keys: readonly string[]) => {
@@ -78,7 +83,7 @@ describe('step-through', () => {
       expect(await ui.find({ type: 'Text', text: /on 29\/11 these two changes stay/ })).toBeDefined()
       expect(await ui.find({ type: 'Button', key: 'yes-1' })).toBeDefined()
       expect(await ui.find({ type: 'Button', key: 'yes-2' })).toBe(undefined)
-      expect(await ui.find({ type: 'Text', text: /WP1/ })).toBe(undefined)
+      expect(await ui.find({ type: 'Text', text: /Ref: PR app#133 · WP1/ })).toBeDefined()
       await ui.unmount()
     }
   })
@@ -103,11 +108,11 @@ describe('step-through', () => {
     await ui.unmount()
   })
 
-  test('Details shows the Ref line', async ($, on) => {
+  test('the Ref line is always shown, with no Details button to hide it', async ($, on) => {
     engine(on)
-    await press($, GOOD_REPORT, 'terminal', ['details-1'])
     const ui = await $.ui.mount(message(GOOD_REPORT, 'terminal'))
     expect(await ui.find({ type: 'Text', text: /Ref: PR app#133 · WP1/ })).toBeDefined()
+    expect(await ui.find({ type: 'Button', key: 'details-1' })).toBe(undefined)
     await ui.unmount()
   })
 
@@ -172,17 +177,31 @@ describe('Change', () => {
     ])
   })
 
-  test('on the phone, the next message becomes the change and is not sent to Claude', async ($, on) => {
+  test('on the phone, the next message goes to Claude as typed and is also kept as the change', async ($, on) => {
     const { submitted } = engine(on)
     await press($, GOOD_REPORT, 'mobile', ['change-1'])
     const result = await $.prompt.submit({ text: 'keep them until 20/12 instead', origin: { kind: 'bridge' }, wait: false })
-    expect(result.drop).toBe('Saved as the change for ask 1. Press Send in the report when you are ready.')
+    expect(result.drop).toBe(undefined)
     await $.prompt.submit({ text: 'unrelated question', origin: { kind: 'bridge' }, wait: false })
     await press($, GOOD_REPORT, 'mobile', ['send'])
     expect(submitted).toEqual([
+      'keep them until 20/12 instead',
       'unrelated question',
       'Answers to the 13:36 report: 1 change: keep them until 20/12 instead. No answer yet: 2, 3, 4, 5, 6, 7.',
     ])
+  })
+
+  test('a typed "1 change: ..." prompt in the terminal reaches Claude word for word', async ($, on) => {
+    const { submitted } = engine(on)
+    await press($, GOOD_REPORT, 'terminal', ['change-1'])
+    const typed = '1 change: the weekly spend limit can only be configured by me from Claude, not in the Slack channel itself.'
+    const result = await $.prompt.submit({ text: typed, origin: { kind: 'composer' }, wait: false })
+    expect(result.drop).toBe(undefined)
+    expect(submitted).toEqual([typed])
+    const second = '2 change: it does not have to be this strict, it can be decided by the model.'
+    const again = await $.prompt.submit({ text: second, origin: { kind: 'composer' }, wait: false })
+    expect(again.drop).toBe(undefined)
+    expect(submitted).toEqual([typed, second])
   })
 
   test('Cancel closes the change without saving', async ($, on) => {
@@ -398,7 +417,79 @@ describe('card spacing', () => {
     expect(json).toContain('"paddingLeft":2')
     expect(await ui.find({ type: 'Text', text: /^Rollback$/ })).toBeDefined()
     expect(await ui.find({ type: 'Button', key: 'yes-1' })).toBeDefined()
-    expect(await ui.find({ type: 'Button', key: 'details-1' })).toBeDefined()
+    expect(await ui.find({ type: 'Button', key: 'details-1' })).toBe(undefined)
     await ui.unmount()
+  })
+})
+
+const drawnWords = (node: unknown): string[] => {
+  if (typeof node === 'string') return [node]
+  if (node === null || typeof node !== 'object') return []
+  const element = node as { type?: string; props?: Record<string, unknown>; children?: unknown[] }
+  const own = [element.props?.text, element.props?.label].filter((value): value is string => typeof value === 'string')
+  return [...own, ...(element.children ?? []).flatMap(drawnWords)]
+}
+
+const wordsOf = (text: string) =>
+  text
+    .replace(/\*\*/g, '')
+    .split(/[^\p{L}\p{N}#'/:-]+/u)
+    .map(word => word.replace(/^[':-]+|[':-]+$/g, ''))
+    .filter(word => word !== '')
+
+const FIELD_LABEL = /^(\s*(?:\d+\.\s+)?)(?:Type:\s*\S+.*$|[A-Z][A-Za-z ]{1,24}:)/
+
+const contentOf = (text: string) =>
+  text
+    .replace(/\*\*/g, '')
+    .split('\n')
+    .map(line => line.replace(FIELD_LABEL, '$1'))
+    .join('\n')
+
+const missingWords = async ($: Engine, text: string, surface: Surface, requestId: string) => {
+  const ui = await $.ui.mount(message(text, surface, requestId))
+  const shown = new Set(wordsOf(drawnWords(await ui.drawn()).join(' \n ')))
+  await ui.unmount()
+  return [...new Set(wordsOf(contentOf(text)))].filter(word => !shown.has(word))
+}
+
+describe('nothing hidden', () => {
+  test('a prose answer that opens with "Needs you:" and carries an ask shows every word, on every surface', async ($, on) => {
+    engine(on)
+    for (const surface of SURFACES) {
+      expect(await missingWords($, PROSE_ANSWER_WITH_ASK, surface, `prose-${surface}`)).toEqual([])
+      const ui = await $.ui.mount(message(PROSE_ANSWER_WITH_ASK, surface, `prose-card-${surface}`))
+      expect(await ui.find({ type: 'Text', text: /ask 1 of 1/ })).toBeDefined()
+      expect(await ui.find({ type: 'Button', key: 'yes-1' })).toBeDefined()
+      expect(await ui.find({ type: 'Markdown', text: /Fourth ticket:\*\* waits on the Acme pricing answer/ })).toBeDefined()
+      expect(await ui.find({ type: 'Text', text: /^Recommend: yes, because all three have green plans$/ })).toBeDefined()
+      await ui.unmount()
+    }
+  })
+
+  test('every word of a full report stays visible at every step of the walk-through', async ($, on) => {
+    engine(on)
+    const keys = ['skip-1', 'skip-2', 'skip-3', 'skip-4', 'skip-5', 'skip-6', 'option-7-A']
+    for (let index = 0; index <= keys.length; index += 1) {
+      expect(await missingWords($, GOOD_REPORT, 'terminal', `walk-${index}`)).toEqual([])
+      expect(await missingWords($, BAD_REPORT, 'terminal', `walk-bad-${index}`)).toEqual([])
+      if (index < keys.length) await press($, GOOD_REPORT, 'terminal', [keys[index]!])
+    }
+  })
+
+  test('the ask on the card is not repeated in the text above it', async ($, on) => {
+    engine(on)
+    const ui = await $.ui.mount(message(GOOD_REPORT, 'terminal'))
+    const summary = await ui.find({ type: 'Markdown' })
+    expect(String(summary?.props.text)).not.toContain('Stop the cleanup job deleting')
+    expect(String(summary?.props.text)).toContain('Switch off the platform')
+    await ui.unmount()
+  })
+
+  test('Send adds the answers under a draft already in the prompt box instead of replacing it', async ($, on) => {
+    const { filled, fillModes } = engine(on, true, () => REPORT_AT, 'half-typed thought')
+    await press($, GOOD_REPORT, 'terminal', ['yes-1', 'send'])
+    expect(fillModes).toEqual(['append'])
+    expect(filled[0]?.startsWith('\nAnswers to the 13:36 report: 1 yes.')).toBe(true)
   })
 })

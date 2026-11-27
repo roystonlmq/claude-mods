@@ -19,13 +19,19 @@ export type Ask = {
   failures: Failure[]
   options: Option[]
   ref?: string
+  labels: Record<string, string>
+  loose: string[]
+  start: number
+  end: number
 }
 
-export type Section = { name: SectionName; lines: string[] }
+export type Section = { name: SectionName; from: number; lines: string[] }
 
 export type Report = {
   headline: string
+  headlineAt: number
   state?: string
+  lines: string[]
   sections: Section[]
   asks: Ask[]
 }
@@ -136,12 +142,16 @@ const splitInline = (text: string) => {
   return { head: head.replace(/[\s|;.]+$/, '').trim(), parts }
 }
 
-const newAsk = (number: number, title: string): Ask => ({
+const newAsk = (number: number, title: string, start: number): Ask => ({
   number,
   title: strip(title),
   fields: {},
   failures: [],
   options: [],
+  labels: {},
+  loose: [],
+  start,
+  end: start + 1,
 })
 
 const addField = (ask: Ask, label: string, value: string, last: { key: string | null }) => {
@@ -177,63 +187,69 @@ const addField = (ask: Ask, label: string, value: string, last: { key: string | 
   if (key === 'recommend') ask.recommend = value
   if (key === 'ref') ask.ref = value
   ask.fields[key] = value
+  ask.labels[key] = label.trim()
   last.key = key
   return true
 }
 
 const appendTo = (ask: Ask, line: string, last: { key: string | null }) => {
   const text = line.trim().replace(/^>\s?/, '')
-  if (text === '' || last.key === null) return
+  if (text === '') return
+  if (last.key === null || last.key === 'failed') {
+    ask.loose.push(line.trim())
+    return
+  }
   if (last.key === 'option') {
     const option = ask.options.at(-1)
     if (option !== undefined) option.outcome = `${option.outcome} ${text}`.trim()
     return
   }
-  if (last.key === 'failed') return
   const joiner = last.key === 'draft' ? '\n' : ' '
   ask.fields[last.key] = `${ask.fields[last.key] ?? ''}${joiner}${text}`.trim()
   if (last.key === 'ref') ask.ref = ask.fields.ref
 }
 
-const parseAsks = (lines: readonly string[]) => {
+const parseAsks = (section: Section) => {
   const asks: Ask[] = []
   const last = { key: null as string | null }
-  for (const line of lines) {
+  section.lines.forEach((line, offset) => {
+    const at = section.from + offset
     const start = line.match(ASK_START)
     const field = line.match(FIELD)
     const current = asks.at(-1)
     if (start !== null && (field === null || fieldKeyOf(field[1]!) === undefined)) {
-      asks.push(newAsk(Number(start[1]), start[2]!))
+      asks.push(newAsk(Number(start[1]), start[2]!, at))
       last.key = null
-      continue
+      return
     }
-    if (current === undefined) continue
-    if (field !== null && addField(current, field[1]!, field[2]!.trim(), last)) continue
+    if (current === undefined) return
+    current.end = at + 1
+    if (field !== null && addField(current, field[1]!, field[2]!.trim(), last)) return
     appendTo(current, line, last)
-  }
+  })
   return asks
 }
 
 export const parseReport = (markdown: string): Report | null => {
   const lines = markdown.replace(/\r\n/g, '\n').split('\n')
   const sections: Section[] = []
-  const head: string[] = []
-  for (const line of lines) {
+  let headlineAt = -1
+  lines.forEach((line, at) => {
     const heading = line.match(HEADING)
     if (heading !== null) {
-      sections.push({ name: canonicalSection(heading[1]!), lines: [] })
-      continue
+      sections.push({ name: canonicalSection(heading[1]!), from: at + 1, lines: [] })
+      return
     }
     const current = sections.at(-1)
-    if (current === undefined) head.push(line)
-    else current.lines.push(line)
-  }
+    if (current !== undefined) current.lines.push(line)
+    else if (headlineAt === -1 && line.trim() !== '') headlineAt = at
+  })
   const needsYou = sections.find(section => section.name === 'Needs you')
-  const asks = needsYou === undefined ? [] : parseAsks(needsYou.lines)
+  const asks = needsYou === undefined ? [] : parseAsks(needsYou)
   const isReport = asks.length > 0 || new Set(sections.map(section => section.name)).size >= 2
   if (!isReport) return null
-  const headline = strip(head.find(line => line.trim() !== '') ?? '')
-  return { headline, state: stateOf(headline), sections, asks }
+  const headline = headlineAt === -1 ? '' : strip(lines[headlineAt]!)
+  return { headline, headlineAt, state: stateOf(headline), lines, sections, asks }
 }
 
 const WHEN =

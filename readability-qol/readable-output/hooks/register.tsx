@@ -10,10 +10,10 @@ import {
   answersMessage,
   freshStep,
   keepRecent,
-  nonAskMarkdown,
   pickWords,
   progressBar,
   reportKey,
+  restMarkdown,
   shortTitle,
   withPick,
 } from './steps'
@@ -146,6 +146,36 @@ const partsOf = (ask: Ask): [string, string][] => {
   return []
 }
 
+const SHOWN_FIELDS: Record<AskType, readonly string[]> = {
+  promote: ['tests', 'customers', 'example', 'rollback'],
+  delete: ['goes', 'restorable', 'ifWrong'],
+  merge: ['behaviour', 'tests', 'open'],
+  message: ['to', 'draft', 'whyNow'],
+  spend: ['cost', 'delivers', 'when'],
+  choice: [],
+  decide: [],
+}
+
+const extrasOf = (ask: Ask): [string, string][] => {
+  const shown = new Set([
+    'recommend',
+    'ref',
+    ...(ask.type === undefined ? [] : ['type', ...SHOWN_FIELDS[ask.type]]),
+    ...(ask.type === 'choice' ? [] : ['yes', 'no']),
+  ])
+  const fields = Object.entries(ask.fields)
+    .filter(([key, value]) => !shown.has(key) && value.trim() !== '')
+    .map(([key, value]): [string, string] => [ask.labels[key] ?? key, value])
+  const failures =
+    ask.type === 'promote'
+      ? []
+      : ask.failures.map((failure): [string, string] => [
+          'Failed',
+          [failure.what, failure.why && `Why: ${failure.why}`, failure.safe && `Safe because: ${failure.safe}`].filter(Boolean).join(' '),
+        ])
+  return [...fields, ...failures, ...(ask.loose.length === 0 ? [] : [['Also', ask.loose.join('\n')] as [string, string]])]
+}
+
 const afterFailuresOf = (ask: Ask): [string, string][] => {
   if (ask.type !== 'promote') return []
   return (
@@ -179,7 +209,7 @@ const answer = ($: EngineInterface, key: string, report: Report, ask: Ask, pick:
 const startChange = async ($: EngineInterface, key: string, report: Report, ask: Ask) => {
   const position = report.asks.findIndex(one => one.number === ask.number)
   await update($, changing, () => ({ report: key, ask: ask.number, title: ask.title, position }))
-  $.ui.toast(`Type the change for ask ${ask.number} in the field under the reply, or send it as your next message.`)
+  $.ui.toast(`Type the change for ask ${ask.number} in the field under the reply. A message you send also goes to Claude and is kept as the change.`)
 }
 
 const saveChange = async ($: EngineInterface, pending: PendingChange, text: string) => {
@@ -200,7 +230,11 @@ const send = async ($: EngineInterface, key: string, report: Report, press: UiPr
   const text = answersMessage(report, step)
   await update($, changing, () => null)
   if (press.surface !== 'mobile') {
-    const filled = await $.prompt.fill({ text, mode: 'replace', cursor: text.length })
+    const draft = await $.prompt.read().then(box => box.text, () => '')
+    const filled =
+      draft.trim() === ''
+        ? await $.prompt.fill({ text, mode: 'replace', cursor: text.length })
+        : await $.prompt.fill({ text: `\n${text}`, mode: 'append' })
     if (filled.isFilled) {
       await saveStep($, key, one => ({ ...one, sentText: `In the prompt box, press Enter to send: ${text}` }))
       return
@@ -228,7 +262,7 @@ export const register: Register = on => {
     const total = report.asks.length
     const current = report.asks[step.index]
     const answered = answeredCount(step)
-    const summary = nonAskMarkdown(report)
+    const summary = restMarkdown(report, report.asks[step.index])
     const receipts = report.asks
       .filter(ask => step.picks[String(ask.number)] !== undefined)
       .map(ask => {
@@ -262,7 +296,9 @@ export const register: Register = on => {
                     ),
                   )
                 : [],
-            trails: await Promise.all(afterFailuresOf(current).map(([label, value]) => paintPart(label, 'heading', value))),
+            trails: await Promise.all(
+              [...afterFailuresOf(current), ...extrasOf(current)].map(([label, value]) => paintPart(label, 'heading', value)),
+            ),
           }
     const blank = (key: string) => <Text key={key}> </Text>
     const partBlock = (key: string, part: PaintedPart) => [blank(`gap-${key}`), <Box key={key}>{partView(ui, card.inks[part.role], part.label, part.runs, isNarrow)}</Box>]
@@ -274,7 +310,7 @@ export const register: Register = on => {
       const isChanging = pending !== null && pending.report === key && pending.ask === ask.number
       const pick = (one: Pick) => () => answer($, key, report, ask, one)
       const rec = ask.recommend?.trim()
-      const isYourCall = rec !== undefined && /^your call/i.test(rec)
+      const isYourCall = rec !== undefined && /^your call\W*$/i.test(rec)
       const recInk = isYourCall ? card.inks.caution : card.inks.recommend
       return (
         <Box key={`ask-${ask.number}`} flexDirection="column" borderStyle="round" borderColor={isReady ? 'subtle' : 'error'} paddingX={1}>
@@ -299,9 +335,9 @@ export const register: Register = on => {
             </Box>,
           ])}
           {painted?.trails.map((part, index) => partBlock(`trail-${index}`, part))}
-          {step.isRefShown && ask.ref !== undefined && [<Text> </Text>, <Text dimColor>Ref: {ask.ref}</Text>]}
+          {ask.ref !== undefined && [<Text> </Text>, <Text dimColor>Ref: {ask.ref}</Text>]}
           {!isReady && [<Text> </Text>, <Text color="error" bold>Not ready: {missing.join('; ')}</Text>]}
-          {isChanging && [<Text> </Text>, <Text color="warning">Changing: type it in the field under the reply, or send it as your next message.</Text>]}
+          {isChanging && [<Text> </Text>, <Text color="warning">Changing: type it in the field under the reply, or send it as your next message to Claude.</Text>]}
           <Text> </Text>
           <Box flexDirection="row" flexWrap="wrap" columnGap={1}>
             {isReady && ask.type !== 'choice' && <Button key={`yes-${ask.number}`} label="Yes" variant="primary" onPress={pick({ answer: 'yes' })} />}
@@ -315,14 +351,6 @@ export const register: Register = on => {
             <Button key={`skip-${ask.number}`} label="Skip" dimColor onPress={pick({ answer: 'skip' })} />
             {step.index > 0 && (
               <Button key={`back-${ask.number}`} label="← Back" dimColor onPress={() => saveStep($, key, one => ({ ...one, index: Math.max(0, one.index - 1) }))} />
-            )}
-            {ask.ref !== undefined && (
-              <Button
-                key={`details-${ask.number}`}
-                label={step.isRefShown ? 'Hide details' : 'Details'}
-                dimColor
-                onPress={() => saveStep($, key, one => ({ ...one, isRefShown: !one.isRefShown }))}
-              />
             )}
           </Box>
         </Box>
@@ -373,13 +401,13 @@ export const register: Register = on => {
         <Text color="warning">Change for ask {pending.ask}: {shortTitle(pending.title, 60)}</Text>
         <Input
           key="change-text"
-          placeholder="Type the change, then Enter. Or send it as your next message."
+          placeholder="Type the change, then Enter. Or send it to Claude as your next message."
           submitLabel="save"
           autoFocus
           onSubmit={value => saveChange($, pending, value)}
         />
         <Box flexDirection="row" columnGap={1}>
-          <Text dimColor>Your next message also becomes the change for ask {pending.ask}.</Text>
+          <Text dimColor>Your next message goes to Claude and is also kept as the change for ask {pending.ask}.</Text>
           <Button key="cancel-change" label="Cancel" dimColor onPress={() => update($, changing, () => null)} />
         </Box>
       </Box>
@@ -390,7 +418,7 @@ export const register: Register = on => {
     const pending = await read($, changing)
     if (pending === null || e.command !== undefined || !isPersonTyping(e.origin)) return next(e)
     if (e.origin.kind === 'plugin') return next(e)
-    await saveChange($, pending, e.text)
-    return { drop: `Saved as the change for ask ${pending.ask}. Press Send in the report when you are ready.` }
+    await saveChange($, pending, e.text).catch(error => $.ui.log(`readable-output: change not kept: ${String(error)}`, { to: 'debug' }))
+    return next(e)
   }).catch(($, e, next) => next(e))
 }
