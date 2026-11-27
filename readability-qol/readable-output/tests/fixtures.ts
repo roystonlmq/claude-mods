@@ -168,3 +168,28 @@ export const SAMPLE_ASK = `Needs you: the approved Acme fix batch is ready to go
    No means: it stays at 30 days; on 29/11 a 4-day setting would delete the change waiting for your go-live.
    Ref: platform stale-changeset setting
 `
+
+export const PROSE_ANSWER_WITH_ASK = `Needs you: here is what the five tickets do, in plain words, so you can answer whether to start them.
+
+- **First ticket:** the bot wakes when containment or CSAT drops and tells you which topic moved.
+- **Second ticket:** edits made in the editor can be undone once their judged tests pass.
+- **Third ticket:** nightly runs move onto the built-in scheduler, so they stop failing at 02:00.
+- **Fourth ticket:** waits on the Acme pricing answer, so it cannot start today.
+- **Fifth ticket:** waits on your call about the weekly spend limit.
+
+Three of the five can move today. The other two stay where they are until their answers arrive.
+
+### Needs you
+1. Start workers on the three tickets that can move today
+   Type: spend
+   Recommend: yes, because all three have green plans
+   Yes means: I start three workers today, 27/11, one per ticket, and merge each change once its checks pass.
+   No means: all three stay where they are from today, 27/11, until you ask.
+   Cost: unknown until each worker finishes. Three workers, billed to the API key.
+   Delivers: the bot also wakes on containment and CSAT drops, edits with Undo pass their judged tests, and nightly runs are rebuilt on the built-in feature.
+   When: today, 27/11, if you say yes.
+   Tests: 9 of 9 plans reviewed
+   Failed: nothing yet.
+   The fourth and fifth tickets are not part of this ask.
+   Ref: APAC-101 · APAC-102 · APAC-103
+`

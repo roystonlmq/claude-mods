@@ -14,20 +14,23 @@ With the SessionStart hook below, Claude writes every report in one fixed shape:
 | Choice | Each option's outcome, with a concrete example. |
 | Decision | Anything else. The common parts are enough. |
 
-Code names such as pull request numbers, work-package labels and hashes go on a Ref line only. The mod hides that line behind Details.
+Code names such as pull request numbers, work-package labels and hashes go on a Ref line only. The card shows that line dimmed under the ask.
 
 ## What you see
 
-The mod redraws each report as a step-through:
+The mod redraws each report as a step-through. It never hides text: every line of the reply is drawn, either in the text above the card or on the card itself.
+
+- The text above the card is the whole reply except the ask the card shows, so prose answers, explanations and the other asks stay readable.
+- The card shows every line of its ask, including parts it has no special label for and loose lines, under Also.
 
 - One ask at a time, with all its facts on screen. Each part has a bold label and a blank line before it. Wrapped text stays indented under its label; on the phone the label sits on its own line with the text indented below. Each failed test is its own block, with Why and Safe because as separate parts.
 - Colours come from reply-colors when it is on (see With other mods): Recommend in gold, Your call and the GO LIVE tag in amber, Yes means in green, No means and Failed in soft red, other labels in blue, and inside every value the same risk, caution, outcome, number, quote and code colours as plain replies. Every word stays as Claude wrote it; copy and the stored message are unchanged.
-- Buttons: Yes, No, Change, Skip, Back and Details. A choice shows one button per option instead of Yes and No.
+- Buttons: Yes, No, Change, Skip and Back. A choice shows one button per option instead of Yes and No.
 - A progress bar, and a receipt line for the asks you have answered.
 - One Send button that builds a single message, for example "Answers to the 13:36 report: 1 yes. 3 change: wait for the third batch. No answer yet: 4, 5."
-  - Terminal: Send puts the message in the prompt box so you can read it, then you press Enter.
+  - Terminal: Send puts the message in the prompt box so you can read it, then you press Enter. A draft already in the box is kept, with the answers added under it.
   - Phone: Send sends it straight away.
-- Change opens a text field in the band under the reply. Or just type your change as your next message: the mod saves it to that ask and does not send it to Claude.
+- Change opens a text field in the band under the reply. Or type it as your next message: it goes to Claude exactly as typed, and the mod also keeps it as that ask's change. No typed prompt is ever held back.
 
 If an ask is missing a required part, its card shows "Not ready" and the missing part, and has no Yes button.
 
@@ -81,7 +84,7 @@ Needs you: the fix batch is ready to go live
    Rollback: re-promote yesterday's version; about 5 minutes.
 ```
 
-is drawn as one card with a progress bar, each part under a bold label, the GO LIVE tag in amber, and Yes, No, Change, Skip, Back and Details buttons. Send then builds one answer message, such as "Answers to the 13:36 report: 1 yes."
+is drawn as one card with a progress bar, each part under a bold label, the GO LIVE tag in amber, and Yes, No, Change, Skip and Back buttons. Send then builds one answer message, such as "Answers to the 13:36 report: 1 yes."
 
 ## Turn it off
 

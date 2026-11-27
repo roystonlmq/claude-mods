@@ -79,12 +79,9 @@ export const withPick = (report: Report, step: Step, ask: Ask, pick: Pick): Step
   }
 }
 
-export const nonAskMarkdown = (report: Report) =>
-  report.sections
-    .filter(section => section.name !== 'Needs you')
-    .map(section => {
-      const body = section.lines.filter(line => !/^\s*(?:[-*]\s+)?Ref:/i.test(line)).join('\n').trim()
-      return body === '' ? '' : `**${section.name}**\n${body}`
-    })
-    .filter(part => part !== '')
-    .join('\n\n')
+export const restMarkdown = (report: Report, shown: Ask | undefined) =>
+  report.lines
+    .filter((_, at) => at !== report.headlineAt && (shown === undefined || at < shown.start || at >= shown.end))
+    .join('\n')
+    .replace(/^\s*\n/, '')
+    .trim()
