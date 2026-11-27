@@ -221,3 +221,45 @@ export const INCOMPLETE_ASK = `The August draft is the only stale change left, a
    Yes means: the job keeps running every hour.
    No means: it runs once a day instead.
 `
+
+const ASK_TITLE = /^\d{1,2}\.\s+(.*)$/
+
+export const toFenced = (report: string) => {
+  const [before, needs = ''] = report.split(/^### Needs you.*$/m)
+  const [askPart = '', ...after] = needs.split(/^### /m)
+  const asks = askPart
+    .split(/^(?=\d{1,2}\.\s)/m)
+    .filter(chunk => ASK_TITLE.test(chunk.split('\n')[0]!))
+    .map(chunk => {
+      const [title, ...rest] = chunk.trimEnd().split('\n')
+      return ['```ask', ASK_TITLE.exec(title!)![1]!, ...rest.map(line => line.replace(/^ {3}/, ''))].join('\n') + '\n```'
+    })
+  return [before!.trimEnd(), '', asks.join('\n\n'), ...after.map(section => `\n### ${section.trimEnd()}`)].join('\n').trim() + '\n'
+}
+
+export const GOOD_FENCED = toFenced(GOOD_REPORT)
+export const BAD_FENCED = toFenced(BAD_REPORT)
+export const SAMPLE_FENCED = toFenced(SAMPLE_ASK)
+export const PROMOTE_NO_FAILURE_FENCED = toFenced(PROMOTE_NO_FAILURE_REASON)
+
+export const SPLIT_ORIGINAL = `The old exports are archived and one ask needs you.
+
+### Needs you
+1. Delete the archived exports
+   Type: delete
+   Recommend: yes
+   Yes means: the archived exports go away today.
+   No means: they stay.
+   What goes: archived exports from the spring trial.
+`
+
+export const SPLIT_FOLLOW_UP = `### Needs you
+1. Delete the archived exports
+   Type: delete
+   Recommend: yes
+   Yes means: the archived exports go away today.
+   No means: they stay.
+   What goes: archived exports from the spring trial.
+   Restorable: yes, for 30 days from the trash.
+   If wrong: we restore them from the trash.
+`

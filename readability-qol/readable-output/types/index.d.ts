@@ -12,7 +12,15 @@ export type Step = {
 
 export type PendingChange = { report: string; ask: number; title: string; position: number }
 
+export type ReadableOutput = {
+  bodyText: (e: { text: string }) => string
+}
+
 declare module 'claude-code' {
+  interface EngineInterface {
+    readableOutput: ReadableOutput
+  }
+
   interface PluginState {
     'readable-output': {
       steps: Shaped<Record<string, Step>>

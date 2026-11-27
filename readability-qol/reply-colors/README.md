@@ -25,7 +25,7 @@ In the terminal it uses the palette you pick (below). On the desktop app, VS Cod
 ## With other mods
 
 - quote-reply: the Reply button stays under each reply.
-- readable-output (status report cards): reply-colors colours the summary above the card (Done, Caught and the rest), and the card colours itself through reply-colors. reply-colors adds `$.replyColors` with two calls: `inks({ surface })` gives the colour for each role, and `paint({ text, surface })` gives the coloured runs for one line of text, using the same rules and the same palette setting as replies. Without reply-colors the card falls back to its own theme colours.
+- readable-output (ask cards): reply-colors draws every reply's text, and readable-output adds its card under it, so colour never depends on the card or on load order. When readable-output is on, reply-colors paints `$.readableOutput.bodyText({ text })`, the reply without its fenced ask blocks, because the card shows those. reply-colors also adds `$.replyColors` with two calls: `inks({ surface })` gives the colour for each role, and `paint({ text, surface })` gives the coloured runs for one line of text, using the same rules and palette as replies. The card uses them, and falls back to its own theme colours without reply-colors.
 
 ## Example
 

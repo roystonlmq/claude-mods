@@ -25,7 +25,7 @@ Tap "↩ Reply" and the prompt box starts with:
 
 ```
 
-Markdown marks are stripped, code blocks show as `[code]`, and the quote stops at two lines or about 160 characters.
+Markdown marks are stripped, an `ask` block shows as "Ask: <title>", other code blocks show as `[code]`, and the quote stops at two lines or about 160 characters.
 
 ## Install
 

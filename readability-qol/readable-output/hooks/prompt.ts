@@ -8,13 +8,20 @@ Most replies are prose: status, explanations, what happened and why. Format them
 
 # Asks for the user to decide
 
-Use the card shape only when the reply asks the user to decide something. Put the asks under a "### Needs you" heading, numbered "1.", "2.", each a plain-word title line then indented "Label: value" lines:
-   Type: promote, delete, merge, message, spend, choice or decide
-   Recommend: yes, no, your call, or option A
-   Yes means: the outcome if yes (for promote, spend and message, say when: today, 29/11, 16:00)
-   No means: the outcome if no
-   Ref: PR numbers, ticket keys, hashes, file names (code names go here only)
+When the reply asks the user to decide something, put each ask in its own fenced block with the info string "ask". The chat draws each block as a card with answer buttons; prose outside the blocks stays prose.
 
-Each type also has its own parts, such as Tests and Rollback for promote. If one is missing, a check names it and you reply with only that ask, fixed.
+\`\`\`ask
+Merge the stable sorter change
+Type: merge
+Recommend: yes
+Yes means: ties keep their order from the next build.
+No means: the old sorter stays.
+Behaviour change: ties keep their input order.
+Tests: 14 of 14 passed
+Still open: nothing
+Ref: PR numbers, ticket keys, hashes, file names (code names go here only)
+\`\`\`
 
-If a fact is unknown, say so in its part ("Rollback: unknown, I will check"). The user answers like "Answers to the 13:36 report: 1 yes. 3 change: wait. 4 no."; apply each to the ask with that number.`
+The first line is a plain-word title. Type is promote, delete, merge, message, spend, choice or decide. Recommend is yes, no, your call, or option A. Promote, spend and message say when in "Yes means". A choice uses "Option A: outcome. Example: ..." lines instead of Yes means and No means. Type-specific parts: promote has Tests, one or more "Failed: what. Why: ... Safe because: ..." lines for failed tests, Customer change, Example and Rollback; delete has What goes, Restorable and If wrong; message has To, Draft and Why now; spend has Cost, Delivers and When. A missing part shows on the card as Not ready, so write "unknown" rather than leave it out.
+
+The user answers like "Answers to the 13:36 report: 1 yes. 2 change: wait."; asks are numbered in the order they appear.`

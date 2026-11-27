@@ -1,4 +1,4 @@
-import type { ElementTable, Register, RenderElement } from 'claude-code'
+import type { ElementTable, EngineInterface, Register, RenderElement } from 'claude-code'
 
 import type { ReplyColors, ReplyColorsRun, ReplyColorsSurface } from '../types'
 import { paintText, parseLines, spaced } from './paint'
@@ -91,6 +91,15 @@ const recolor = (node: Node, paintEngineRow: () => RenderElement, paintMarkdown:
   return node
 }
 
+const bodyOf = async ($: EngineInterface, text: string) => {
+  try {
+    const body = await $.readableOutput.bodyText({ text })
+    return typeof body === 'string' ? body : text
+  } catch {
+    return text
+  }
+}
+
 const replyColorsOf = (palette: () => Palette): ReplyColors => ({
   inks: ({ surface }) => ({ ...inksFor(palette(), surface) }),
   paint: ({ text, surface }) => {
@@ -135,13 +144,14 @@ export const register: Register = (on, options) => {
   on('ui.render', { component: 'AssistantMessage' }, async ($, e, next) => {
     const tree = await next(e)
     if (e.props.isSummary === true || e.props.text.trim() === '') return tree
+    const body = await bodyOf($, e.props.text)
     const surface: ReplyColorsSurface = e.surface
     const inks = inksFor(palette(), surface)
     const ui = $.ui.resolve(e)
     const reply = (text: string) => drawReply(ui, inks, text)
     return recolor(
       tree,
-      () => (surface === 'terminal' ? asTranscriptRow(ui, reply(e.props.text), e.props.isFirstOfReply) : reply(e.props.text)),
+      () => (surface === 'terminal' ? asTranscriptRow(ui, reply(body), e.props.isFirstOfReply) : reply(body)),
       reply,
     ) as RenderElement
   }).catch(($, e, next) => next(e))

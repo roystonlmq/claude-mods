@@ -4,7 +4,7 @@ import type { On } from 'claude-code'
 
 import type { RenderElement } from 'claude-code'
 
-import { BAD_REPORT, GOOD_REPORT, SAMPLE_ASK, PLAIN_CHAT, PROMOTE_NO_FAILURE_REASON, PROSE_ANSWER_WITH_ASK } from './fixtures'
+import { BAD_FENCED, GOOD_REPORT, GOOD_FENCED, SAMPLE_FENCED, PLAIN_CHAT, PROMOTE_NO_FAILURE_FENCED, PROSE_ANSWER_WITH_ASK } from './fixtures'
 
 const PLUGIN = 'readable-output'
 const SURFACES = ['terminal', 'desktop', 'vscode', 'mobile'] as const
@@ -36,7 +36,7 @@ const engine = (on: On, isFilled = true, clock = () => REPORT_AT, draft = '') =>
   const toasts: string[] = []
   on('ui.render', ($, e) => {
     const { Text } = $.ui.resolve(e)
-    return <Text>engine row</Text>
+    return <Text>{`engine row\n${e.component === 'AssistantMessage' ? String(e.props.text) : ''}`}</Text>
   })
   on('clock.now', () => ({ value: clock() }))
   on('prompt.read', () => ({ value: { text: draft, cursor: draft.length } }))
@@ -77,7 +77,7 @@ describe('step-through', () => {
   test('shows one ask at a time with its full context and progress, on every surface', async ($, on) => {
     engine(on)
     for (const surface of SURFACES) {
-      const ui = await $.ui.mount(message(GOOD_REPORT, surface, `first-${surface}`))
+      const ui = await $.ui.mount(message(GOOD_FENCED, surface, `first-${surface}`))
       expect(await ui.find({ type: 'Text', text: /ask 1 of 7/ })).toBeDefined()
       expect(await ui.find({ type: 'Text', text: /Stop the cleanup job deleting two Acme bot changes/ })).toBeDefined()
       expect(await ui.find({ type: 'Text', text: /on 29\/11 these two changes stay/ })).toBeDefined()
@@ -90,8 +90,8 @@ describe('step-through', () => {
 
   test('Yes moves to the next ask and folds the answer into a receipt', async ($, on) => {
     engine(on)
-    await press($, GOOD_REPORT, 'terminal', ['yes-1'])
-    const ui = await $.ui.mount(message(GOOD_REPORT, 'terminal'))
+    await press($, GOOD_FENCED, 'terminal', ['yes-1'])
+    const ui = await $.ui.mount(message(GOOD_FENCED, 'terminal'))
     expect(await ui.find({ type: 'Text', text: /ask 2 of 7/ })).toBeDefined()
     expect(await ui.find({ type: 'Text', text: /✓ 1 Stop the cleanup job deleting two…: yes/ })).toBeDefined()
     expect((await ui.find({ type: 'Button', key: 'send' }))?.props.label).toBe('Send 1 answer')
@@ -100,8 +100,8 @@ describe('step-through', () => {
 
   test('Back reopens the previous ask and Skip moves on without an answer', async ($, on) => {
     engine(on)
-    await press($, GOOD_REPORT, 'terminal', ['yes-1', 'back-2', 'skip-1'])
-    const ui = await $.ui.mount(message(GOOD_REPORT, 'terminal'))
+    await press($, GOOD_FENCED, 'terminal', ['yes-1', 'back-2', 'skip-1'])
+    const ui = await $.ui.mount(message(GOOD_FENCED, 'terminal'))
     expect(await ui.find({ type: 'Text', text: /ask 2 of 7/ })).toBeDefined()
     expect(await ui.find({ type: 'Text', text: /· 1 .*: skipped/ })).toBeDefined()
     expect(await ui.find({ type: 'Button', key: 'send' })).toBe(undefined)
@@ -110,7 +110,7 @@ describe('step-through', () => {
 
   test('the Ref line is always shown, with no Details button to hide it', async ($, on) => {
     engine(on)
-    const ui = await $.ui.mount(message(GOOD_REPORT, 'terminal'))
+    const ui = await $.ui.mount(message(GOOD_FENCED, 'terminal'))
     expect(await ui.find({ type: 'Text', text: /Ref: PR app#133 · WP1/ })).toBeDefined()
     expect(await ui.find({ type: 'Button', key: 'details-1' })).toBe(undefined)
     await ui.unmount()
@@ -118,37 +118,37 @@ describe('step-through', () => {
 
   test('a choice ask offers its options instead of Yes and No', async ($, on) => {
     engine(on)
-    await press($, GOOD_REPORT, 'terminal', ['yes-1', 'yes-2', 'no-3', 'no-4', 'yes-5', 'skip-6'])
-    const ui = await $.ui.mount(message(GOOD_REPORT, 'terminal'))
+    await press($, GOOD_FENCED, 'terminal', ['yes-1', 'yes-2', 'no-3', 'no-4', 'yes-5', 'skip-6'])
+    const ui = await $.ui.mount(message(GOOD_FENCED, 'terminal'))
     expect(await ui.find({ type: 'Button', key: 'option-7-A' })).toBeDefined()
     expect(await ui.find({ type: 'Button', key: 'no-7' })).toBe(undefined)
     await ui.press({ key: 'option-7-A' })
     await ui.unmount()
-    const end = await $.ui.mount(message(GOOD_REPORT, 'terminal'))
+    const end = await $.ui.mount(message(GOOD_FENCED, 'terminal'))
     expect(await end.find({ type: 'Text', text: /All 7 asks seen/ })).toBeDefined()
     await end.unmount()
   })
 
   test('Send on the terminal fills the prompt box with one message', async ($, on) => {
     const { filled, submitted } = engine(on)
-    await press($, GOOD_REPORT, 'terminal', ['yes-1', 'skip-2', 'no-3', 'send'])
+    await press($, GOOD_FENCED, 'terminal', ['yes-1', 'skip-2', 'no-3', 'send'])
     expect(filled).toEqual(['Answers to the 13:36 report: 1 yes. 3 no. No answer yet: 2, 4, 5, 6, 7.'])
     expect(submitted).toEqual([])
-    const ui = await $.ui.mount(message(GOOD_REPORT, 'terminal'))
+    const ui = await $.ui.mount(message(GOOD_FENCED, 'terminal'))
     expect(await ui.find({ type: 'Text', text: /In the prompt box, press Enter to send/ })).toBeDefined()
     await ui.unmount()
   })
 
   test('Send on the phone sends straight away', async ($, on) => {
     const { filled, submitted } = engine(on)
-    await press($, GOOD_REPORT, 'mobile', ['yes-1', 'yes-2', 'send'])
+    await press($, GOOD_FENCED, 'mobile', ['yes-1', 'yes-2', 'send'])
     expect(filled).toEqual([])
     expect(submitted).toEqual(['Answers to the 13:36 report: 1 yes. 2 yes. No answer yet: 3, 4, 5, 6, 7.'])
   })
 
   test('Send falls back to sending when the prompt box cannot be filled', async ($, on) => {
     const { submitted } = engine(on, false)
-    await press($, GOOD_REPORT, 'desktop', ['no-1', 'send'])
+    await press($, GOOD_FENCED, 'desktop', ['no-1', 'send'])
     expect(submitted).toEqual(['Answers to the 13:36 report: 1 no. No answer yet: 2, 3, 4, 5, 6, 7.'])
   })
 })
@@ -157,21 +157,21 @@ test('Send names the time the report arrived, not the time of the press', async 
   let now = REPORT_AT
   const { filled } = engine(on, true, () => now)
   on('turn.complete', (_, e) => ({ text: e.answer }))
-  await $.turn.complete({ turnId: 't1', answer: GOOD_REPORT, durationMs: 1000, reason: 'answer', isAborted: false })
+  await $.turn.complete({ turnId: 't1', answer: GOOD_FENCED, durationMs: 1000, reason: 'answer', isAborted: false })
   now = new Date(2026, 10, 25, 15, 5).getTime()
-  await press($, GOOD_REPORT, 'terminal', ['yes-1', 'send'])
+  await press($, GOOD_FENCED, 'terminal', ['yes-1', 'send'])
   expect(filled[0]?.startsWith('Answers to the 13:36 report: 1 yes.')).toBe(true)
 })
 
 describe('Change', () => {
   test('opens a field in the band under the reply and saves what is typed there', async ($, on) => {
     const { filled } = engine(on)
-    await press($, GOOD_REPORT, 'terminal', ['yes-1', 'yes-2', 'change-3'])
+    await press($, GOOD_FENCED, 'terminal', ['yes-1', 'yes-2', 'change-3'])
     const field = await $.ui.mount(band('terminal'))
     expect(await field.find({ type: 'Text', text: /Change for ask 3: Put the approved Acme fix batch live/ })).toBeDefined()
     await field.input({ key: 'change-text', text: 'wait until the third batch finishes', kind: 'submit' })
     await field.unmount()
-    await press($, GOOD_REPORT, 'terminal', ['send'])
+    await press($, GOOD_FENCED, 'terminal', ['send'])
     expect(filled).toEqual([
       'Answers to the 13:36 report: 1 yes. 2 yes. 3 change: wait until the third batch finishes. No answer yet: 4, 5, 6, 7.',
     ])
@@ -179,11 +179,11 @@ describe('Change', () => {
 
   test('on the phone, the next message goes to Claude as typed and is also kept as the change', async ($, on) => {
     const { submitted } = engine(on)
-    await press($, GOOD_REPORT, 'mobile', ['change-1'])
+    await press($, GOOD_FENCED, 'mobile', ['change-1'])
     const result = await $.prompt.submit({ text: 'keep them until 20/12 instead', origin: { kind: 'bridge' }, wait: false })
     expect(result.drop).toBe(undefined)
     await $.prompt.submit({ text: 'unrelated question', origin: { kind: 'bridge' }, wait: false })
-    await press($, GOOD_REPORT, 'mobile', ['send'])
+    await press($, GOOD_FENCED, 'mobile', ['send'])
     expect(submitted).toEqual([
       'keep them until 20/12 instead',
       'unrelated question',
@@ -193,7 +193,7 @@ describe('Change', () => {
 
   test('a typed "1 change: ..." prompt in the terminal reaches Claude word for word', async ($, on) => {
     const { submitted } = engine(on)
-    await press($, GOOD_REPORT, 'terminal', ['change-1'])
+    await press($, GOOD_FENCED, 'terminal', ['change-1'])
     const typed = '1 change: the weekly spend limit can only be configured by me from Claude, not in the Slack channel itself.'
     const result = await $.prompt.submit({ text: typed, origin: { kind: 'composer' }, wait: false })
     expect(result.drop).toBe(undefined)
@@ -206,7 +206,7 @@ describe('Change', () => {
 
   test('Cancel closes the change without saving', async ($, on) => {
     const { submitted } = engine(on)
-    await press($, GOOD_REPORT, 'terminal', ['change-1'])
+    await press($, GOOD_FENCED, 'terminal', ['change-1'])
     const field = await $.ui.mount(band('terminal'))
     await field.press({ key: 'cancel-change' })
     await field.unmount()
@@ -219,8 +219,8 @@ describe('Not ready', () => {
   test('an ask missing a required part shows Not ready and no Yes button', async ($, on) => {
     engine(on)
     for (const surface of SURFACES) {
-      const ui = await $.ui.mount(message(PROMOTE_NO_FAILURE_REASON, surface, `promote-${surface}`))
-      expect(await ui.find({ type: 'Text', text: /Not ready: failure details for 2 of 2 failed tests/ })).toBeDefined()
+      const ui = await $.ui.mount(message(PROMOTE_NO_FAILURE_FENCED, surface, `promote-${surface}`))
+      expect(await ui.find({ type: 'Text', text: /Not ready: why the 2 failed tests are safe/ })).toBeDefined()
       expect(await ui.find({ type: 'Button', key: 'yes-1' })).toBe(undefined)
       expect(await ui.find({ type: 'Button', key: 'no-1' })).toBeDefined()
       expect(await ui.find({ type: 'Button', key: 'change-1' })).toBeDefined()
@@ -240,8 +240,8 @@ describe('Not ready', () => {
 
   test('a choice missing examples shows no option buttons', async ($, on) => {
     engine(on)
-    await press($, BAD_REPORT, 'terminal', ['skip-1', 'skip-2', 'skip-3', 'skip-4'])
-    const ui = await $.ui.mount(message(BAD_REPORT, 'terminal'))
+    await press($, BAD_FENCED, 'terminal', ['skip-1', 'skip-2', 'skip-3', 'skip-4'])
+    const ui = await $.ui.mount(message(BAD_FENCED, 'terminal'))
     expect(await ui.find({ type: 'Text', text: /Not ready: a type/ })).toBeDefined()
     expect(await ui.find({ type: 'Button', key: 'option-5-A' })).toBe(undefined)
     await ui.unmount()
@@ -329,7 +329,7 @@ const PAINTED_VALUES = [
 ]
 
 const cardRuns = async ($: Engine, surface: Surface = 'terminal') => {
-  const ui = await $.ui.mount(message(SAMPLE_ASK, surface, `ask-${surface}`))
+  const ui = await $.ui.mount(message(SAMPLE_FENCED, surface, `ask-${surface}`))
   const runs = runsOf(await ui.drawn())
   await ui.unmount()
   return runs
@@ -338,8 +338,8 @@ const cardRuns = async ($: Engine, surface: Surface = 'terminal') => {
 describe('card layout', () => {
   test('each failed test is its own block with Why and Safe because as their own labelled parts, parts spaced by blank lines', async ($, on) => {
     engine(on)
-    await press($, GOOD_REPORT, 'terminal', ['skip-1', 'skip-2'])
-    const ui = await $.ui.mount(message(GOOD_REPORT, 'terminal'))
+    await press($, GOOD_FENCED, 'terminal', ['skip-1', 'skip-2'])
+    const ui = await $.ui.mount(message(GOOD_FENCED, 'terminal'))
     expect(await ui.find({ type: 'Text', text: /^Failed 1$/ })).toBeDefined()
     expect(await ui.find({ type: 'Text', text: /^a rider asking for a refund in Tagalog got the English article\.?$/ })).toBeDefined()
     expect(await ui.find({ type: 'Text', text: /^Why:  $/ })).toBeDefined()
@@ -371,7 +371,7 @@ describe('card colours from reply-colors', () => {
 
   test('a recommendation takes the recommend colour', withReplyColors, async ($, on) => {
     engine(on)
-    await press($, SAMPLE_ASK, 'terminal', ['skip-1'])
+    await press($, SAMPLE_FENCED, 'terminal', ['skip-1'])
     const runs = await cardRuns($)
     expect(runOf(runs, 'Recommend: yes')).toMatchObject({ color: INKS.recommend.color, bold: true })
   })
@@ -409,20 +409,30 @@ describe('card spacing', () => {
     }
   })
 
-  test('a blank line after the headline and before the Needs you row', withReplyColors, async ($, on) => {
+  test('the card sits under the engine row and before buttons drawn beneath', async ($, on) => {
+    on('ui.render', { component: 'AssistantMessage' }, async ($, e, next) => {
+      const { Box, Button } = $.ui.resolve(e)
+      const row = await next(e)
+      return (
+        <Box flexDirection="column">
+          {row}
+          <Button key="reply" label="Reply" onPress={() => undefined} />
+        </Box>
+      )
+    })
     engine(on)
-    const ui = await $.ui.mount(message(SAMPLE_ASK, 'terminal', 'ask-rows'))
-    const root = (await ui.drawn()) as RenderElement
+    const ui = await $.ui.mount(message(SAMPLE_FENCED, 'terminal', 'order'))
+    const text = lines(runsOf(await ui.drawn())).join('\n')
+    const drawn = JSON.stringify(await ui.drawn())
     await ui.unmount()
-    const rows = ('children' in root ? root.children ?? [] : []).flat(Infinity) as RenderElement[]
-    const rowText = (row: RenderElement) => runsOf(row).map(run => run.text).join('')
-    const kinds = rows.map(row => (row.type === 'Markdown' ? 'summary' : rowText(row).trim() === '' ? 'blank' : rowText(row).startsWith('Needs you  ask') ? 'needs-you' : 'other'))
-    expect(kinds.slice(0, 5)).toEqual(['other', 'blank', 'summary', 'blank', 'needs-you'])
+    expect(text.indexOf('engine row')).toBe(0)
+    expect(text.indexOf('Needs you  ask') > 0).toBe(true)
+    expect(drawn.lastIndexOf('"key":"reply"') > drawn.lastIndexOf('"key":"yes-1"')).toBe(true)
   })
 
   test('on the phone each label sits on its own line with its text indented under it', withReplyColors, async ($, on) => {
     engine(on)
-    const ui = await $.ui.mount(message(SAMPLE_ASK, 'mobile', 'ask-phone'))
+    const ui = await $.ui.mount(message(SAMPLE_FENCED, 'mobile', 'ask-phone'))
     const json = JSON.stringify(await ui.drawn())
     expect(json).toContain('"paddingLeft":2')
     expect(await ui.find({ type: 'Text', text: /^Rollback$/ })).toBeDefined()
@@ -471,7 +481,7 @@ describe('nothing hidden', () => {
       const ui = await $.ui.mount(message(PROSE_ANSWER_WITH_ASK, surface, `prose-card-${surface}`))
       expect(await ui.find({ type: 'Text', text: /ask 1 of 1/ })).toBeDefined()
       expect(await ui.find({ type: 'Button', key: 'yes-1' })).toBeDefined()
-      expect(await ui.find({ type: 'Markdown', text: /Fourth ticket:\*\* waits on the Acme pricing answer/ })).toBeDefined()
+      expect(await ui.find({ type: 'Text', text: /Fourth ticket:\*\* waits on the Acme pricing answer/ })).toBeDefined()
       expect(await ui.find({ type: 'Text', text: /^Recommend: yes, because all three have green plans$/ })).toBeDefined()
       await ui.unmount()
     }
@@ -481,24 +491,42 @@ describe('nothing hidden', () => {
     engine(on)
     const keys = ['skip-1', 'skip-2', 'skip-3', 'skip-4', 'skip-5', 'skip-6', 'option-7-A']
     for (let index = 0; index <= keys.length; index += 1) {
-      expect(await missingWords($, GOOD_REPORT, 'terminal', `walk-${index}`)).toEqual([])
-      expect(await missingWords($, BAD_REPORT, 'terminal', `walk-bad-${index}`)).toEqual([])
-      if (index < keys.length) await press($, GOOD_REPORT, 'terminal', [keys[index]!])
+      expect(await missingWords($, GOOD_FENCED, 'terminal', `walk-${index}`)).toEqual([])
+      expect(await missingWords($, BAD_FENCED, 'terminal', `walk-bad-${index}`)).toEqual([])
+      if (index < keys.length) await press($, GOOD_FENCED, 'terminal', [keys[index]!])
     }
   })
 
-  test('the ask on the card is not repeated in the text above it', async ($, on) => {
+  const bodyReader = {
+    plugins: [
+      {
+        name: 'body-reader',
+        register(on: On) {
+          on('ui.render', { component: 'AssistantMessage' }, async ($, e) => {
+            const { Text } = $.ui.resolve(e)
+            return <Text>{`body:${await $.readableOutput.bodyText({ text: String(e.props.text) })}`}</Text>
+          })
+        },
+      },
+    ],
+  }
+
+  test('the body text handed to reply-colors leaves out the fenced asks the card shows', bodyReader, async ($, on) => {
     engine(on)
-    const ui = await $.ui.mount(message(GOOD_REPORT, 'terminal'))
-    const summary = await ui.find({ type: 'Markdown' })
-    expect(String(summary?.props.text)).not.toContain('Stop the cleanup job deleting')
-    expect(String(summary?.props.text)).toContain('Switch off the platform')
+    const ui = await $.ui.mount(message(GOOD_FENCED, 'terminal', 'body'))
+    const body = String((await ui.find({ type: 'Text', text: /^body:/ }))?.children?.join('') ?? '')
     await ui.unmount()
+    expect(body).toContain('### Running')
+    expect(body).not.toContain('```ask')
+    expect(body).not.toContain('Stop the cleanup job deleting')
+    const legacy = await $.ui.mount(message(GOOD_REPORT, 'terminal', 'legacy-body'))
+    expect(await legacy.find({ type: 'Text', text: /1\. Stop the cleanup job deleting/ })).toBeDefined()
+    await legacy.unmount()
   })
 
   test('Send adds the answers under a draft already in the prompt box instead of replacing it', async ($, on) => {
     const { filled, fillModes } = engine(on, true, () => REPORT_AT, 'half-typed thought')
-    await press($, GOOD_REPORT, 'terminal', ['yes-1', 'send'])
+    await press($, GOOD_FENCED, 'terminal', ['yes-1', 'send'])
     expect(fillModes).toEqual(['append'])
     expect(filled[0]?.startsWith('\nAnswers to the 13:36 report: 1 yes.')).toBe(true)
   })

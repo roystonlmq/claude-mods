@@ -32,8 +32,13 @@ export type ReplyColors = {
   paint: (e: ReplyColorsPaintInput) => ReplyColorsRun[]
 }
 
+export type ReplyBodySource = {
+  bodyText: (e: { text: string }) => string
+}
+
 declare module 'claude-code' {
   interface EngineInterface {
     replyColors: ReplyColors
+    readableOutput: ReplyBodySource
   }
 }

@@ -1,13 +1,12 @@
 import type { Pick, Step } from '../types'
-import type { Ask, Report } from './shape'
+import type { Ask } from './shape'
 
 export const STEPS_KEPT = 40
 
-export const reportKey = (report: Report) => {
-  const seed = [report.headline, ...report.asks.map(ask => `${ask.number}.${ask.title}`)].join('\n')
+export const messageKey = (text: string) => {
   let hash = 5381
-  for (let index = 0; index < seed.length; index += 1) {
-    hash = ((hash << 5) + hash + seed.charCodeAt(index)) >>> 0
+  for (let index = 0; index < text.length; index += 1) {
+    hash = ((hash << 5) + hash + text.charCodeAt(index)) >>> 0
   }
   return `r${hash.toString(36)}`
 }
@@ -42,14 +41,14 @@ export const pickWords = (pick: Pick) => {
 export const answeredCount = (step: Step) =>
   Object.values(step.picks).filter(pick => pick.answer !== 'skip').length
 
-export const answersMessage = (report: Report, step: Step) => {
-  const answered = report.asks.flatMap(ask => {
+export const answersMessage = (asks: readonly Ask[], step: Step) => {
+  const answered = asks.flatMap(ask => {
     const pick = step.picks[String(ask.number)]
     if (pick === undefined || pick.answer === 'skip') return []
     const words = pickWords(pick)
     return [`${ask.number} ${words}${/[.!?]$/.test(words) ? '' : '.'}`]
   })
-  const open = report.asks
+  const open = asks
     .filter(ask => {
       const pick = step.picks[String(ask.number)]
       return pick === undefined || pick.answer === 'skip'
@@ -69,19 +68,12 @@ export const shortTitle = (title: string, limit = 42) => {
 export const progressBar = (done: number, total: number) =>
   `${'█'.repeat(done)}${'░'.repeat(Math.max(0, total - done))}`
 
-export const withPick = (report: Report, step: Step, ask: Ask, pick: Pick): Step => {
-  const position = report.asks.findIndex(one => one.number === ask.number)
+export const withPick = (asks: readonly Ask[], step: Step, ask: Ask, pick: Pick): Step => {
+  const position = asks.findIndex(one => one.number === ask.number)
   return {
     ...step,
     picks: { ...step.picks, [String(ask.number)]: pick },
-    index: Math.min(report.asks.length, position + 1),
+    index: Math.min(asks.length, position + 1),
     sentText: null,
   }
 }
-
-export const restMarkdown = (report: Report, shown: Ask | undefined) =>
-  report.lines
-    .filter((_, at) => at !== report.headlineAt && (shown === undefined || at < shown.start || at >= shown.end))
-    .join('\n')
-    .replace(/^\s*\n/, '')
-    .trim()

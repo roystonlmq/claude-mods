@@ -1,7 +1,7 @@
 {
   "name": "readable-output",
-  "version": "0.5.0",
-  "description": "Status reports in one fixed shape, with each ask stepped through one at a time (Yes, No, Change, Skip) and one Send for all answers; the card takes its colours from reply-colors",
+  "version": "0.6.0",
+  "description": "Adds a card under each reply with fenced ask blocks, stepping through each ask (Yes, No, Change, Skip) with one Send for all answers. The card never replaces the reply, so its colours and other mods stay; colours come from reply-colors",
   "author": {
     "name": "roystonlmq"
   },

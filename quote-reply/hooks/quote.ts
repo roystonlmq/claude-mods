@@ -23,7 +23,9 @@ const asQuote = (lines: readonly string[]) =>
   `${lines.map(line => `> ${line}`.trimEnd()).join('\n')}\n\n`
 
 export const shortQuote = (markdown: string): string => {
-  const prose = markdown.replace(/```[\s\S]*?(?:```|$)/g, '\n[code]\n')
+  const prose = markdown
+    .replace(/^ {0,3}```ask[^\S\n]*\n\s*([^\n]*)[\s\S]*?(?:^ {0,3}```[^\S\n]*$|(?![\s\S]))/gm, '\nAsk: $1\n')
+    .replace(/```[\s\S]*?(?:```|$)/g, '\n[code]\n')
   const lines = prose.split('\n').map(cleanLine).filter(line => line !== '')
   const picked: string[] = []
   let used = 0

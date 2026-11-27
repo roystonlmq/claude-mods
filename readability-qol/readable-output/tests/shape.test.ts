@@ -1,8 +1,8 @@
 import { describe, expect, test } from 'claude-code/testing'
 
-import { askProblems, blockReason, codeNamesIn, hasWhen, missingParts, parseReport, timingHints } from '../hooks/shape'
+import { bodyText, codeNamesIn, findAsks, parseAskBlock, sameAsk, hasWhen, missingParts, parseReport, timingHints } from '../hooks/shape'
 import { answersMessage, freshStep, withPick } from '../hooks/steps'
-import { BAD_REPORT, GOOD_REPORT, INCOMPLETE_ASK, PLAIN_CHAT, PROMOTE_NO_FAILURE_REASON, PROSE_STATUS } from './fixtures'
+import { BAD_REPORT, GOOD_FENCED, GOOD_REPORT, INCOMPLETE_ASK, PLAIN_CHAT, PROMOTE_NO_FAILURE_REASON, PROSE_STATUS } from './fixtures'
 
 const parsed = (text: string) => {
   const report = parseReport(text)
@@ -10,8 +10,10 @@ const parsed = (text: string) => {
   return report
 }
 
-const problemFor = (text: string, ask: number) =>
-  askProblems(parsed(text)).find(one => one.ask === ask)?.missing ?? []
+const problemsOf = (asks: readonly Parameters<typeof missingParts>[0][]) =>
+  asks.map(ask => ({ ask: ask.number, missing: missingParts(ask) })).filter(one => one.missing.length > 0)
+
+const problemFor = (text: string, ask: number) => problemsOf(parsed(text).asks).find(one => one.ask === ask)?.missing ?? []
 
 describe('parser', () => {
   test('reads the headline, sections and every ask of the good report', async () => {
@@ -55,29 +57,31 @@ describe('parser', () => {
 
 describe('required parts', () => {
   test('the good report has every required part', async () => {
-    expect(askProblems(parsed(GOOD_REPORT))).toEqual([])
+    expect(problemsOf(parsed(GOOD_REPORT).asks)).toEqual([])
   })
 
   test('a promote ask with failed tests and no explanation is not ready', async () => {
     expect(problemFor(PROMOTE_NO_FAILURE_REASON, 1)).toEqual([
-      'failure details for 2 of 2 failed tests (each "Failed: what failed. Why: ... Safe because: ..."; unknown is not enough to go live)',
+      'why the 2 failed tests are safe ("Failed: what failed. Why: ... Safe because: ..."; one line can cover a group)',
     ])
   })
 
   test('a promote ask names its missing example and rollback', async () => {
     const missing = problemFor(BAD_REPORT, 2)
-    expect(missing.some(part => part.startsWith('failure details for 2 of 2'))).toBe(true)
+    expect(missing.some(part => part.startsWith('why the 2 failed tests are safe'))).toBe(true)
     expect(missing.includes('one sample chat or example')).toBe(true)
     expect(missing.includes('how to roll back')).toBe(true)
   })
 
-  test('reads numbered failure labels and treats unknown as not explained', async () => {
+  test('reads numbered failure labels, and one explained line covers the group', async () => {
     const lines = '   Failed test 1: unknown. Why: unknown. Safe because: unknown.\n   Failure 2: Failed: the sandbox timed out. Why: the order service was down. Safe because: it passed on rerun at 14:10.\n'
     const text = PROMOTE_NO_FAILURE_REASON.replace('   Customer change:', `${lines}   Customer change:`)
     const ask = parsed(text).asks[0]!
     expect(ask.failures.map(one => one.what)).toEqual(['unknown', 'the sandbox timed out'])
     expect(ask.fields.tests).toBe('46 of 48 passed')
-    expect(missingParts(ask)[0]?.startsWith('failure details for 1 of 2 failed tests')).toBe(true)
+    expect(missingParts(ask)).toEqual([])
+    const unexplained = PROMOTE_NO_FAILURE_REASON.replace('   Customer change:', '   Failed test 1: unknown. Why: unknown. Safe because: unknown.\n   Customer change:')
+    expect(missingParts(parsed(unexplained).asks[0]!)[0]?.startsWith('why the 2 failed tests are safe')).toBe(true)
   })
 
   test('a delete ask needs what goes, restorable and what breaks', async () => {
@@ -112,7 +116,7 @@ describe('required parts', () => {
       '3. Put the fix batch live\n   Type: promote\n   Recommend: no\n   Yes means: live today at 16:00.\n   No means: it waits until 01/12.\n   Tests: not known yet, the run is still going.\n   Customer change: riders get the new article.\n   Example: a rider asks about tolls.\n   Rollback: unknown, I will check before going live.\n',
     ]
     const report = parsed(`Needs you: three asks\n\n### Needs you\n${asks.join('\n')}`)
-    expect(askProblems(report)).toEqual([])
+    expect(problemsOf(report.asks)).toEqual([])
   })
 
   test('words that only mention unknown, or a blank part, are still caught', async () => {
@@ -138,25 +142,13 @@ describe('required parts', () => {
 
   test('a prose status reply with headings and no asks has no problems', async () => {
     const report = parseReport(PROSE_STATUS)
-    expect(report === null ? [] : askProblems(report)).toEqual([])
+    expect(report === null ? [] : problemsOf(report.asks)).toEqual([])
   })
 
-  test('the block reason for an incomplete ask names only what is missing', async () => {
-    const report = parsed(INCOMPLETE_ASK)
-    const problems = askProblems(report)
+  test('an incomplete ask names only what is missing', async () => {
+    const problems = problemsOf(parsed(INCOMPLETE_ASK).asks)
     expect(problems.map(one => one.ask)).toEqual([1])
-    const reason = blockReason(problems)
-    expect(reason.includes('whether it can be restored')).toBe(true)
-    expect(reason.includes('Ask 2')).toBe(false)
-    expect(reason.includes('whole report')).toBe(false)
-    expect(reason.includes('headline')).toBe(false)
-    expect(reason.includes('A delete ask has: "What goes:"; "Restorable:" yes with how long, or no; "If wrong:".')).toBe(true)
-  })
-
-  test('the block reason names the ask and its missing parts', async () => {
-    const report = parsed(PROMOTE_NO_FAILURE_REASON)
-    const reason = blockReason(askProblems(report))
-    expect(reason.includes('Ask 1 "Put the approved Acme fix batch live" (promote): add failure details for 2 of 2 failed tests')).toBe(true)
+    expect(problems[0]!.missing.some(part => part.includes('whether it can be restored'))).toBe(true)
   })
 
   test('dates and code names are recognised', async () => {
@@ -172,13 +164,51 @@ describe('answer message', () => {
   test('builds one message with every pick and the open asks', async () => {
     const report = parsed(GOOD_REPORT)
     let step = { ...freshStep(0), at: '13:36' }
-    step = withPick(report, step, report.asks[0]!, { answer: 'yes' })
-    step = withPick(report, step, report.asks[2]!, { answer: 'change', text: 'wait for the third batch' })
-    step = withPick(report, step, report.asks[3]!, { answer: 'no' })
-    step = withPick(report, step, report.asks[4]!, { answer: 'skip' })
-    step = withPick(report, step, report.asks[6]!, { answer: 'option', text: 'A' })
-    expect(answersMessage(report, step)).toBe(
+    step = withPick(report.asks, step, report.asks[0]!, { answer: 'yes' })
+    step = withPick(report.asks, step, report.asks[2]!, { answer: 'change', text: 'wait for the third batch' })
+    step = withPick(report.asks, step, report.asks[3]!, { answer: 'no' })
+    step = withPick(report.asks, step, report.asks[4]!, { answer: 'skip' })
+    step = withPick(report.asks, step, report.asks[6]!, { answer: 'option', text: 'A' })
+    expect(answersMessage(report.asks, step)).toBe(
       'Answers to the 13:36 report: 1 yes. 3 change: wait for the third batch. 4 no. 7 option A. No answer yet: 2, 5, 6.',
     )
+  })
+})
+
+describe('fenced asks', () => {
+  test('reads every fenced ask with its title, type and parts, numbered in order', async () => {
+    const { asks, isFenced } = findAsks(GOOD_FENCED)
+    expect(isFenced).toBe(true)
+    expect(asks.map(ask => ask.number)).toEqual([1, 2, 3, 4, 5, 6, 7])
+    expect(asks.map(ask => ask.title)).toEqual(parsed(GOOD_REPORT).asks.map(ask => ask.title))
+    expect(asks.map(ask => ask.type)).toEqual(parsed(GOOD_REPORT).asks.map(ask => ask.type))
+    expect(asks.every(ask => missingParts(ask).length === 0)).toBe(true)
+  })
+
+  test('a fenced ask with no title line is named by its number', async () => {
+    const ask = parseAskBlock('Type: decide\nRecommend: yes\nYes means: it stays.\nNo means: it moves.\n', 2)
+    expect(ask.title).toBe('Ask 2')
+    expect(ask.type).toBe('decide')
+  })
+
+  test('a reply with no fence falls back to the prose parser, and prose with no asks has none', async () => {
+    expect(findAsks(GOOD_REPORT)).toEqual({ asks: parsed(GOOD_REPORT).asks, isFenced: false })
+    expect(findAsks(PLAIN_CHAT).asks).toEqual([])
+    expect(findAsks(PROSE_STATUS).asks).toEqual([])
+  })
+
+  test('the body text drops the fences and keeps every other line', async () => {
+    const body = bodyText(GOOD_FENCED)
+    expect(body.includes('```ask')).toBe(false)
+    expect(body.includes('Stop the cleanup job deleting')).toBe(false)
+    expect(body.includes('### Caught')).toBe(true)
+    expect(body.includes('### Running')).toBe(true)
+    expect(bodyText(PLAIN_CHAT)).toBe(PLAIN_CHAT.trim())
+  })
+
+  test('the same ask in two replies is matched by title', async () => {
+    const [one] = findAsks(GOOD_FENCED).asks
+    const [other] = parsed(GOOD_REPORT).asks
+    expect(sameAsk(one!, other!)).toBe(true)
   })
 })

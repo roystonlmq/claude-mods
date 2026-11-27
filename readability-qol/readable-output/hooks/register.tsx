@@ -3,20 +3,9 @@ import type { ElementTable, EngineInterface, PromptOrigin, Register, RenderEleme
 
 import type { PendingChange, Pick, Step } from '../types'
 import type { CardInk, CardInkRole, CardRun, CardSurface } from '../types/reply-colors'
-import { missingParts, parseReport, timingHints } from './shape'
-import type { Ask, AskType, Report } from './shape'
-import {
-  answeredCount,
-  answersMessage,
-  freshStep,
-  keepRecent,
-  pickWords,
-  progressBar,
-  reportKey,
-  restMarkdown,
-  shortTitle,
-  withPick,
-} from './steps'
+import { bodyText, findAsks, missingParts, sameAsk, timingHints } from './shape'
+import type { Ask, AskType } from './shape'
+import { answeredCount, answersMessage, freshStep, keepRecent, messageKey, pickWords, progressBar, shortTitle, withPick } from './steps'
 
 const steps = atom({ plugin: 'readable-output', key: 'steps' } as const, {} as Record<string, Step>, { shape: 'steps-1' })
 const changing = atom({ plugin: 'readable-output', key: 'changing' } as const, null as PendingChange | null, { shape: 'changing-1' })
@@ -40,6 +29,7 @@ const PLAIN_INKS: Record<CardInkRole, CardInk> = {
 }
 
 const NARROW_COLUMNS = 60
+const HISTORY_ROWS = 200
 
 type Card = {
   inks: Record<CardInkRole, CardInk>
@@ -68,6 +58,8 @@ type PaintedPart = { label: string; role: CardInkRole; runs: CardRun[] }
 
 type PaintedFailure = { what: CardRun[]; why?: CardRun[]; safe?: CardRun[] }
 
+type Painted = { leads: PaintedPart[]; failures: PaintedFailure[]; trails: PaintedPart[] }
+
 const runsView = (ui: ElementTable, runs: readonly CardRun[]) => {
   const { Text, Link } = ui
   return (
@@ -90,9 +82,13 @@ const runsView = (ui: ElementTable, runs: readonly CardRun[]) => {
   )
 }
 
-const partView = (ui: ElementTable, ink: CardInk | undefined, label: string, runs: readonly CardRun[], isNarrow: boolean): RenderElement => {
+const partView = (ui: ElementTable, ink: CardInk, label: string, runs: readonly CardRun[], isNarrow: boolean): RenderElement => {
   const { Box, Text } = ui
-  const labelText = <Text bold {...(ink !== undefined ? { color: ink.color } : {})}>{isNarrow ? label : `${label}  `}</Text>
+  const labelText = (
+    <Text bold color={ink.color}>
+      {isNarrow ? label : `${label}  `}
+    </Text>
+  )
   if (isNarrow) {
     return (
       <Box flexDirection="column">
@@ -111,15 +107,6 @@ const partView = (ui: ElementTable, ink: CardInk | undefined, label: string, run
       </Box>
     </Box>
   )
-}
-
-const STATE_COLORS: Record<string, string> = {
-  Done: 'success',
-  'Partly done': 'warning',
-  'Needs you': 'warning',
-  Running: 'suggestion',
-  Blocked: 'error',
-  Failed: 'error',
 }
 
 const REPLYING_ORIGINS: ReadonlySet<PromptOrigin['kind']> = new Set(['composer', 'bridge'])
@@ -187,15 +174,44 @@ const afterFailuresOf = (ask: Ask): [string, string][] => {
   ).filter((part): part is [string, string] => part[1] !== undefined && part[1].trim() !== '')
 }
 
-const stepOf = async ($: EngineInterface, key: string) =>
-  (await read($, steps))[key] ?? freshStep(await $.clock.now())
+const paintAsk = async (card: Card, ask: Ask): Promise<Painted> => {
+  const paintPart = async (label: string, role: CardInkRole, value: string): Promise<PaintedPart> => ({ label, role, runs: await card.paint(value) })
+  return {
+    leads: [
+      ...(ask.type !== 'choice' && ask.fields.yes !== undefined ? [await paintPart('Yes means', 'done', ask.fields.yes)] : []),
+      ...(ask.type !== 'choice' && ask.fields.no !== undefined ? [await paintPart('No means', 'risk', ask.fields.no)] : []),
+      ...(await Promise.all(partsOf(ask).map(([label, value]) => paintPart(label, 'heading', value)))),
+    ],
+    failures:
+      ask.type === 'promote'
+        ? await Promise.all(
+            ask.failures.map(
+              async (failure): Promise<PaintedFailure> => ({
+                what: await card.paint(failure.what),
+                ...(failure.why ? { why: await card.paint(failure.why) } : {}),
+                ...(failure.safe ? { safe: await card.paint(failure.safe) } : {}),
+              }),
+            ),
+          )
+        : [],
+    trails: await Promise.all([...afterFailuresOf(ask), ...extrasOf(ask)].map(([label, value]) => paintPart(label, 'heading', value))),
+  }
+}
 
-const recordReport = async ($: EngineInterface, text: string) => {
-  const report = parseReport(text)
-  if (report === null || report.asks.length === 0) return
-  const key = reportKey(report)
-  const step = freshStep(await $.clock.now())
-  await update($, steps, all => (all[key] === undefined ? keepRecent(all, key, step) : all))
+const isLaterFixed = async ($: EngineInterface, text: string, ask: Ask) => {
+  try {
+    const result = await $.session.messages({ last: HISTORY_ROWS })
+    if (!Array.isArray(result)) return false
+    const rows = result
+    const at = rows.findIndex(row => row.role === 'assistant' && row.text.includes(text))
+    if (at === -1) return false
+    return rows
+      .slice(at + 1)
+      .filter(row => row.role === 'assistant')
+      .some(row => findAsks(row.text).asks.some(later => sameAsk(later, ask) && missingParts(later).length === 0))
+  } catch {
+    return false
+  }
 }
 
 const saveStep = async ($: EngineInterface, key: string, change: (step: Step) => Step) => {
@@ -203,11 +219,8 @@ const saveStep = async ($: EngineInterface, key: string, change: (step: Step) =>
   return update($, steps, all => keepRecent(all, key, change(all[key] ?? freshStep(now))))
 }
 
-const answer = ($: EngineInterface, key: string, report: Report, ask: Ask, pick: Pick) =>
-  saveStep($, key, step => withPick(report, step, ask, pick))
-
-const startChange = async ($: EngineInterface, key: string, report: Report, ask: Ask) => {
-  const position = report.asks.findIndex(one => one.number === ask.number)
+const startChange = async ($: EngineInterface, key: string, asks: readonly Ask[], ask: Ask) => {
+  const position = asks.findIndex(one => one.number === ask.number)
   await update($, changing, () => ({ report: key, ask: ask.number, title: ask.title, position }))
   $.ui.toast(`Type the change for ask ${ask.number} in the field under the reply. A message you send also goes to Claude and is kept as the change.`)
 }
@@ -224,10 +237,10 @@ const saveChange = async ($: EngineInterface, pending: PendingChange, text: stri
   }))
 }
 
-const send = async ($: EngineInterface, key: string, report: Report, press: UiPressArgument) => {
+const send = async ($: EngineInterface, key: string, asks: readonly Ask[], press: UiPressArgument) => {
   const step = (await read($, steps))[key]
   if (step === undefined) return
-  const text = answersMessage(report, step)
+  const text = answersMessage(asks, step)
   await update($, changing, () => null)
   if (press.surface !== 'mobile') {
     const draft = await $.prompt.read().then(box => box.text, () => '')
@@ -244,154 +257,191 @@ const send = async ($: EngineInterface, key: string, report: Report, press: UiPr
   await saveStep($, key, one => ({ ...one, sentText: `Sent: ${text}` }))
 }
 
+type CardInput = {
+  ui: ElementTable
+  card: Card
+  text: string
+  asks: readonly Ask[]
+  isFenced: boolean
+  isNarrow: boolean
+}
+
+const drawCards = async ($: EngineInterface, { ui, card, text, asks, isFenced, isNarrow }: CardInput): Promise<RenderElement> => {
+  const { Box, Text, Button } = ui
+  const key = messageKey(text)
+  const step = (await read($, steps))[key] ?? freshStep(await $.clock.now())
+  const pending = await read($, changing)
+  const total = asks.length
+  const current = asks[step.index]
+  const answered = answeredCount(step)
+  const receipts = asks
+    .filter(ask => step.picks[String(ask.number)] !== undefined)
+    .map(ask => {
+      const pick = step.picks[String(ask.number)]!
+      return `${pick.answer === 'skip' ? '·' : '✓'} ${ask.number} ${shortTitle(ask.title, 34)}: ${pickWords(pick)}`
+    })
+  const missing = current === undefined ? [] : missingParts(current)
+  const isFixedLater = current !== undefined && missing.length > 0 && (await isLaterFixed($, text, current))
+  const painted = current !== undefined && isFenced ? await paintAsk(card, current) : undefined
+  const blank = (id: string) => <Text key={id}> </Text>
+  const partBlock = (id: string, part: PaintedPart) => [blank(`gap-${id}`), <Box key={id}>{partView(ui, card.inks[part.role], part.label, part.runs, isNarrow)}</Box>]
+  const pickOf = (ask: Ask, one: Pick) => () => saveStep($, key, all => withPick(asks, all, ask, one))
+
+  const askView = (ask: Ask) => {
+    const isReady = missing.length === 0
+    const hints = timingHints(ask)
+    const tag = ask.type === undefined ? undefined : TYPE_TAGS[ask.type]
+    const isChanging = pending !== null && pending.report === key && pending.ask === ask.number
+    const rec = ask.recommend?.trim()
+    const isYourCall = rec !== undefined && /^your call\W*$/i.test(rec)
+    const recInk = isYourCall ? card.inks.caution : card.inks.recommend
+    const canAnswer = !isFixedLater
+    return (
+      <Box key={`ask-${ask.number}`} flexDirection="column" borderStyle="round" borderColor={isReady || isFixedLater ? 'subtle' : 'error'} paddingX={1}>
+        <Text>
+          <Text bold color={card.inks.heading.color}>
+            {ask.number}  {ask.title}
+          </Text>
+          {tag !== undefined && <Text color={card.inks[tag.role].color} bold>{` ${tag.tag}`}</Text>}
+        </Text>
+        <Text> </Text>
+        {rec === undefined || rec === '' ? (
+          <Text bold color={card.inks.caution.color}>
+            No recommendation
+          </Text>
+        ) : (
+          <Text bold color={recInk.color}>
+            {isYourCall ? 'Your call' : `Recommend: ${rec}`}
+          </Text>
+        )}
+        {painted?.leads.map((part, index) => partBlock(`lead-${index}`, part))}
+        {painted?.failures.map((failure, index) => [
+          blank(`gap-failed-${index}`),
+          <Text key={`failed-${index}`} bold color={card.inks.risk.color}>{`Failed ${index + 1}`}</Text>,
+          <Box key={`failed-body-${index}`} flexDirection="column" paddingLeft={2}>
+            {runsView(ui, failure.what)}
+            {failure.why && [blank(`gap-why-${index}`), partView(ui, card.inks.heading, 'Why:', failure.why, isNarrow)]}
+            {failure.safe && [blank(`gap-safe-${index}`), partView(ui, card.inks.heading, 'Safe because:', failure.safe, isNarrow)]}
+          </Box>,
+        ])}
+        {painted?.trails.map((part, index) => partBlock(`trail-${index}`, part))}
+        {isFenced && ask.ref !== undefined && [<Text key="gap-ref"> </Text>, <Text key="ref" dimColor>Ref: {ask.ref}</Text>]}
+        {isFixedLater && [<Text key="gap-later"> </Text>, <Text key="later" color={card.inks.done.color} bold>Updated in a later reply: answer it there.</Text>]}
+        {!isReady && !isFixedLater && [<Text key="gap-missing"> </Text>, <Text key="missing" color="error" bold>Not ready: {missing.join('; ')}</Text>]}
+        {hints.length > 0 && [<Text key="gap-hint"> </Text>, <Text key="hint" color="warning">Hint: no {hints.join('; ')}</Text>]}
+        {isChanging && [<Text key="gap-changing"> </Text>, <Text key="changing" color="warning">Changing: type it in the field under the reply, or send it as your next message to Claude.</Text>]}
+        <Text> </Text>
+        <Box flexDirection="row" flexWrap="wrap" columnGap={1}>
+          {canAnswer && isReady && ask.type !== 'choice' && <Button key={`yes-${ask.number}`} label="Yes" variant="primary" onPress={pickOf(ask, { answer: 'yes' })} />}
+          {canAnswer &&
+            isReady &&
+            ask.type === 'choice' &&
+            ask.options.map(option => (
+              <Button key={`option-${ask.number}-${option.label}`} label={`Option ${option.label}`} onPress={pickOf(ask, { answer: 'option', text: option.label })} />
+            ))}
+          {canAnswer && ask.type !== 'choice' && <Button key={`no-${ask.number}`} label="No" onPress={pickOf(ask, { answer: 'no' })} />}
+          {canAnswer && <Button key={`change-${ask.number}`} label="Change" onPress={() => startChange($, key, asks, ask)} />}
+          <Button key={`skip-${ask.number}`} label="Skip" dimColor onPress={pickOf(ask, { answer: 'skip' })} />
+          {step.index > 0 && (
+            <Button key={`back-${ask.number}`} label="← Back" dimColor onPress={() => saveStep($, key, one => ({ ...one, index: Math.max(0, one.index - 1) }))} />
+          )}
+        </Box>
+      </Box>
+    )
+  }
+
+  const endView = (
+    <Box key="end" flexDirection="column">
+      <Text>{total === 1 ? 'The only ask is seen.' : `All ${total} asks seen.`}</Text>
+      <Box flexDirection="row" columnGap={1}>
+        <Button key="back-end" label="← Back" dimColor onPress={() => saveStep($, key, one => ({ ...one, index: Math.max(0, total - 1) }))} />
+      </Box>
+    </Box>
+  )
+
+  return (
+    <Box flexDirection="column">
+      {blank('gap-needs-you')}
+      <Text>
+        <Text bold color={card.inks.caution.color}>
+          Needs you
+        </Text>
+        <Text>
+          {'  '}ask {Math.min(step.index + 1, total)} of {total}{'  '}
+        </Text>
+        <Text color={card.inks.heading.color}>{progressBar(Math.min(step.index, total), total)}</Text>
+      </Text>
+      {receipts.length > 0 && <Text dimColor>{receipts.join('   ')}</Text>}
+      {current === undefined ? endView : askView(current)}
+      {step.sentText !== null ? (
+        <Text color="success">{step.sentText}</Text>
+      ) : (
+        answered > 0 && (
+          <Box flexDirection="row" columnGap={1}>
+            <Button key="send" label={`Send ${answered} answer${answered === 1 ? '' : 's'}`} variant="primary" onPress={press => send($, key, asks, press)} />
+            {current !== undefined && <Text dimColor>or keep going; unanswered asks are sent as "no answer yet"</Text>}
+          </Box>
+        )
+      )}
+    </Box>
+  )
+}
+
+const isButton = (node: unknown) => typeof node === 'object' && node !== null && (node as { type?: string }).type === 'Button'
+
+const withCardsBeforeButtons = (Box: ElementTable['Box'], row: RenderElement, cards: RenderElement): RenderElement => {
+  const children = row.type === 'Box' && row.props?.flexDirection === 'column' ? (row.children ?? []) : undefined
+  if (children === undefined || !isButton(children.at(-1))) {
+    return (
+      <Box flexDirection="column">
+        {row}
+        {cards}
+      </Box>
+    )
+  }
+  let firstButton = children.length
+  while (firstButton > 0 && isButton(children[firstButton - 1])) firstButton -= 1
+  return { ...row, children: [...children.slice(0, firstButton), cards, ...children.slice(firstButton)] } as RenderElement
+}
+
 export const register: Register = on => {
+  on('engine.create', async ($, e, next) => {
+    const beneath = await next(e)
+    return { ...beneath, readableOutput: { bodyText: ({ text }: { text: string }) => bodyText(text) } }
+  })
+
   on('turn.complete', async ($, e, next) => {
     const done = await next(e)
-    if (e.agentId === undefined) await recordReport($, e.answer)
+    if (e.agentId === undefined && findAsks(e.answer).asks.length > 0) await saveStep($, messageKey(e.answer), step => step)
     return done
   })
 
+  on('session.start', async ($, e, next) => {
+    const started = await next(e)
+    $.ui.invalidate('ui.render')
+    return started
+  })
+
   on('ui.render', { component: 'AssistantMessage' }, async ($, e, next) => {
-    if (e.props.isSummary === true) return next(e)
-    const report = parseReport(e.props.text)
-    if (report === null || report.asks.length === 0) return next(e)
-    const key = reportKey(report)
-    const step = await stepOf($, key)
-    const pending = await read($, changing)
-    const { Box, Text, Button, Markdown } = $.ui.resolve(e)
-    const total = report.asks.length
-    const current = report.asks[step.index]
-    const answered = answeredCount(step)
-    const summary = restMarkdown(report, report.asks[step.index])
-    const receipts = report.asks
-      .filter(ask => step.picks[String(ask.number)] !== undefined)
-      .map(ask => {
-        const pick = step.picks[String(ask.number)]!
-        const mark = pick.answer === 'skip' ? '·' : '✓'
-        return `${mark} ${ask.number} ${shortTitle(ask.title, 34)}: ${pickWords(pick)}`
+    const row = await next(e)
+    if (e.props.isSummary === true) return row
+    const { asks, isFenced } = findAsks(e.props.text)
+    if (asks.length === 0) return row
+    const { Box } = $.ui.resolve(e)
+    try {
+      const cards = await drawCards($, {
+        ui: $.ui.resolve(e),
+        card: await cardOf($, e.surface),
+        text: e.props.text,
+        asks,
+        isFenced,
+        isNarrow: e.surface === 'mobile' || (e.viewport?.columns !== undefined && e.viewport.columns < NARROW_COLUMNS),
       })
-
-    const ui = $.ui.resolve(e)
-    const card = await cardOf($, e.surface)
-    const isNarrow = e.surface === 'mobile' || (e.viewport?.columns !== undefined && e.viewport.columns < NARROW_COLUMNS)
-    const paintPart = async (label: string, role: CardInkRole, value: string): Promise<PaintedPart> => ({ label, role, runs: await card.paint(value) })
-    const painted =
-      current === undefined
-        ? undefined
-        : {
-            leads: [
-              ...(current.type !== 'choice' && current.fields.yes !== undefined ? [await paintPart('Yes means', 'done', current.fields.yes)] : []),
-              ...(current.type !== 'choice' && current.fields.no !== undefined ? [await paintPart('No means', 'risk', current.fields.no)] : []),
-              ...(await Promise.all(partsOf(current).map(([label, value]) => paintPart(label, 'heading', value)))),
-            ],
-            failures:
-              current.type === 'promote'
-                ? await Promise.all(
-                    current.failures.map(
-                      async (failure): Promise<PaintedFailure> => ({
-                        what: await card.paint(failure.what),
-                        ...(failure.why ? { why: await card.paint(failure.why) } : {}),
-                        ...(failure.safe ? { safe: await card.paint(failure.safe) } : {}),
-                      }),
-                    ),
-                  )
-                : [],
-            trails: await Promise.all(
-              [...afterFailuresOf(current), ...extrasOf(current)].map(([label, value]) => paintPart(label, 'heading', value)),
-            ),
-          }
-    const blank = (key: string) => <Text key={key}> </Text>
-    const partBlock = (key: string, part: PaintedPart) => [blank(`gap-${key}`), <Box key={key}>{partView(ui, card.inks[part.role], part.label, part.runs, isNarrow)}</Box>]
-
-    const askView = (ask: Ask) => {
-      const missing = missingParts(ask)
-      const isReady = missing.length === 0
-      const hints = timingHints(ask)
-      const tag = ask.type === undefined ? undefined : TYPE_TAGS[ask.type]
-      const isChanging = pending !== null && pending.report === key && pending.ask === ask.number
-      const pick = (one: Pick) => () => answer($, key, report, ask, one)
-      const rec = ask.recommend?.trim()
-      const isYourCall = rec !== undefined && /^your call\W*$/i.test(rec)
-      const recInk = isYourCall ? card.inks.caution : card.inks.recommend
-      return (
-        <Box key={`ask-${ask.number}`} flexDirection="column" borderStyle="round" borderColor={isReady ? 'subtle' : 'error'} paddingX={1}>
-          <Text>
-            <Text bold>{ask.number}  {ask.title}</Text>
-            {tag !== undefined && <Text color={card.inks[tag.role].color} bold>{` ${tag.tag}`}</Text>}
-          </Text>
-          <Text> </Text>
-          {rec === undefined || rec === '' ? (
-            <Text bold>No recommendation</Text>
-          ) : (
-            <Text bold color={recInk.color}>{isYourCall ? 'Your call' : `Recommend: ${rec}`}</Text>
-          )}
-          {painted?.leads.map((part, index) => partBlock(`lead-${index}`, part))}
-          {painted?.failures.map((failure, index) => [
-            blank(`gap-failed-${index}`),
-            <Text key={`failed-${index}`} bold color={card.inks.risk.color}>{`Failed ${index + 1}`}</Text>,
-            <Box key={`failed-body-${index}`} flexDirection="column" paddingLeft={2}>
-              {runsView(ui, failure.what)}
-              {failure.why && [blank(`gap-why-${index}`), partView(ui, undefined, 'Why:', failure.why, isNarrow)]}
-              {failure.safe && [blank(`gap-safe-${index}`), partView(ui, undefined, 'Safe because:', failure.safe, isNarrow)]}
-            </Box>,
-          ])}
-          {painted?.trails.map((part, index) => partBlock(`trail-${index}`, part))}
-          {ask.ref !== undefined && [<Text> </Text>, <Text dimColor>Ref: {ask.ref}</Text>]}
-          {!isReady && [<Text> </Text>, <Text color="error" bold>Not ready: {missing.join('; ')}</Text>]}
-          {hints.length > 0 && [<Text> </Text>, <Text color="warning">Hint: no {hints.join('; ')}</Text>]}
-          {isChanging && [<Text> </Text>, <Text color="warning">Changing: type it in the field under the reply, or send it as your next message to Claude.</Text>]}
-          <Text> </Text>
-          <Box flexDirection="row" flexWrap="wrap" columnGap={1}>
-            {isReady && ask.type !== 'choice' && <Button key={`yes-${ask.number}`} label="Yes" variant="primary" onPress={pick({ answer: 'yes' })} />}
-            {isReady &&
-              ask.type === 'choice' &&
-              ask.options.map(option => (
-                <Button key={`option-${ask.number}-${option.label}`} label={`Option ${option.label}`} onPress={pick({ answer: 'option', text: option.label })} />
-              ))}
-            {ask.type !== 'choice' && <Button key={`no-${ask.number}`} label="No" onPress={pick({ answer: 'no' })} />}
-            <Button key={`change-${ask.number}`} label="Change" onPress={() => startChange($, key, report, ask)} />
-            <Button key={`skip-${ask.number}`} label="Skip" dimColor onPress={pick({ answer: 'skip' })} />
-            {step.index > 0 && (
-              <Button key={`back-${ask.number}`} label="← Back" dimColor onPress={() => saveStep($, key, one => ({ ...one, index: Math.max(0, one.index - 1) }))} />
-            )}
-          </Box>
-        </Box>
-      )
+      return withCardsBeforeButtons(Box, row, cards)
+    } catch (error) {
+      $.ui.log(`readable-output: card not drawn: ${String(error)}`, { to: 'debug' })
+      return row
     }
-
-    const endView = (
-      <Box key="end" flexDirection="column">
-        <Text>{total === 1 ? 'The only ask is seen.' : `All ${total} asks seen.`}</Text>
-        <Box flexDirection="row" columnGap={1}>
-          <Button key="back-end" label="← Back" dimColor onPress={() => saveStep($, key, one => ({ ...one, index: Math.max(0, total - 1) }))} />
-        </Box>
-      </Box>
-    )
-
-    return (
-      <Box flexDirection="column">
-        <Text bold color={STATE_COLORS[report.state ?? ''] ?? 'text'}>{report.headline}</Text>
-        {summary !== '' && [blank('gap-summary'), <Markdown key="summary" text={summary} />]}
-        {blank('gap-needs-you')}
-        <Text>
-          <Text bold color={card.inks.caution.color}>Needs you</Text>
-          <Text>  ask {Math.min(step.index + 1, total)} of {total}  </Text>
-          <Text color={card.inks.heading.color}>{progressBar(Math.min(step.index, total), total)}</Text>
-        </Text>
-        {receipts.length > 0 && <Text dimColor>{receipts.join('   ')}</Text>}
-        {current === undefined ? endView : askView(current)}
-        {step.sentText !== null ? (
-          <Text color="success">{step.sentText}</Text>
-        ) : (
-          answered > 0 && (
-            <Box flexDirection="row" columnGap={1}>
-              <Button key="send" label={`Send ${answered} answer${answered === 1 ? '' : 's'}`} variant="primary" onPress={press => send($, key, report, press)} />
-              {current !== undefined && <Text dimColor>or keep going; unanswered asks are sent as "no answer yet"</Text>}
-            </Box>
-          )
-        )}
-      </Box>
-    )
   })
 
   on('ui.render', { component: 'AbovePrompt' }, async ($, e, next) => {

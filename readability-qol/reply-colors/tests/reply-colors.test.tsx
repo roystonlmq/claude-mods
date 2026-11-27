@@ -225,6 +225,34 @@ describe('living beside other mods', () => {
   })
 })
 
+const FENCED_ASK_REPLY = 'The sorter fix is ready.\n\n```ask\nMerge the stable sorter change\nType: merge\nRecommend: yes\n```\n\n**Next**\n\nI watch the build.'
+
+describe('the body from readable-output', () => {
+  test('paints the body readable-output hands over, so the ask fence its card shows is not drawn twice', { plugins: [
+    {
+      name: 'readable-output-body',
+      register(on) {
+        on('engine.create', async ($, e, next) => {
+          const beneath = await next(e)
+          return { ...beneath, readableOutput: { bodyText: ({ text }: { text: string }) => text.replace(/```ask\n[\s\S]*?```\n*/g, '') } }
+        })
+      },
+    },
+  ] }, async $ => {
+    const runs = runsOf(await draw($, FENCED_ASK_REPLY))
+    const drawn = runs.map(run => run.text).join('')
+    expect(drawn.includes('Merge the stable sorter change')).toBe(false)
+    expect(drawn.includes('The sorter fix is ready.')).toBe(true)
+    expect(colorOf(runs, 'Next')?.color).toBe(CALM.heading.color)
+  })
+
+  test('without readable-output every line is painted, the ask fence included', async $ => {
+    const drawn = runsOf(await draw($, FENCED_ASK_REPLY)).map(run => run.text).join('')
+    expect(drawn.includes('Merge the stable sorter change')).toBe(true)
+    expect(drawn.includes('I watch the build.')).toBe(true)
+  })
+})
+
 describe('surfaces', () => {
   test('summaries keep the engine row', async $ => {
     expect(await draw($, SAMPLE_REPLY, 'terminal', { isSummary: true })).toMatchObject({ type: 'engine' })

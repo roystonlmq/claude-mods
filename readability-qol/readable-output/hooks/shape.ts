@@ -36,8 +36,6 @@ export type Report = {
   asks: Ask[]
 }
 
-export type AskProblem = { ask: number; title: string; type?: AskType; missing: string[] }
-
 const TYPE_ALIASES: Record<string, AskType> = {
   promote: 'promote',
   'go live': 'promote',
@@ -316,10 +314,10 @@ const promoteMissing = (ask: Ask) => {
     if (!statesUnknown(ask.fields.tests)) missing.push('test results ("Tests: X of Y passed")')
   } else {
     const failed = Math.max(0, tests.total - tests.passed)
-    const explained = ask.failures.filter(one => !isUnknown(one.what) && !isUnknown(one.why) && !isUnknown(one.safe))
-    if (explained.length < failed) {
+    const isExplained = ask.failures.some(one => !isUnknown(one.what) && !isUnknown(one.why) && !isUnknown(one.safe))
+    if (failed > 0 && !isExplained) {
       missing.push(
-        `failure details for ${failed - explained.length} of ${failed} failed tests (each "Failed: what failed. Why: ... Safe because: ..."; unknown is not enough to go live)`,
+        `why the ${failed} failed test${failed === 1 ? ' is' : 's are'} safe ("Failed: what failed. Why: ... Safe because: ..."; one line can cover a group)`,
       )
     }
   }
@@ -405,32 +403,49 @@ export const timingHints = (ask: Ask): string[] =>
     ? ['when it happens in "Yes means" (today, 29/11, 16:00)']
     : []
 
-export const TYPE_PARTS: Record<AskType, string> = {
-  promote:
-    '"Tests: X of Y passed"; per failed test "Failed: what. Why: why. Safe because: why it is still safe."; "Customer change:"; "Example:" one sample chat; "Rollback:"',
-  delete: '"What goes:"; "Restorable:" yes with how long, or no; "If wrong:"',
-  merge: '"Behaviour change:"; "Tests: X of Y passed"; "Still open:" (nothing if none)',
-  message: '"To:"; "Draft:" with the text on lines starting "> "; "Why now:"',
-  spend: '"Cost:"; "Delivers:"; "When:"',
-  choice: 'two or more "Option A: outcome. Example: ..." lines instead of Yes means and No means',
-  decide: 'only the common parts',
-}
+const ASK_FENCE = /^ {0,3}```ask[^\S\n]*\n([\s\S]*?)^ {0,3}```[^\S\n]*$/gm
+const TITLE_NUMBER = /^\s*(?:\*\*)?\d{1,2}[.)](?:\*\*)?\s+/
 
-export const askProblems = (report: Report): AskProblem[] =>
-  report.asks.flatMap(ask => {
-    const missing = missingParts(ask)
-    return missing.length === 0 ? [] : [{ ask: ask.number, title: ask.title, type: ask.type, missing }]
+const normalized = (text: string) => text.replace(/\r\n?/g, '\n')
+
+export const askBlocks = (text: string) => [...normalized(text).matchAll(ASK_FENCE)].map(match => match[1]!)
+
+export const bodyText = (text: string) =>
+  normalized(text)
+    .replace(ASK_FENCE, '')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim()
+
+export const parseAskBlock = (block: string, number: number): Ask => {
+  const lines = block.split('\n')
+  const titleAt = lines.findIndex(line => {
+    if (line.trim() === '') return false
+    const field = line.match(FIELD)
+    return field === null || fieldKeyOf(field[1]!) === undefined
   })
-
-export const blockReason = (problems: readonly AskProblem[]) => {
-  const lines = problems.map(
-    one =>
-      `- Ask ${one.ask} "${one.title}"${one.type ? ` (${one.type})` : ''}: add ${one.missing.join('; ')}.` +
-      (one.type === undefined ? '' : ` A ${one.type} ask has: ${TYPE_PARTS[one.type]}.`),
-  )
-  return [
-    'Readable replies check: these asks are missing parts, so their cards cannot offer Yes yet.',
-    ...lines,
-    'Reply with only these asks under "### Needs you", same numbers and titles, with the missing parts added. Do not repeat the rest of the reply. If a fact is unknown, write that in the part (for example "Rollback: unknown, I will check").',
-  ].join('\n')
+  const firstFieldAt = lines.findIndex(line => {
+    const field = line.match(FIELD)
+    return field !== null && fieldKeyOf(field[1]!) !== undefined
+  })
+  const hasTitle = titleAt !== -1 && (firstFieldAt === -1 || titleAt < firstFieldAt)
+  const ask = newAsk(number, hasTitle ? lines[titleAt]!.replace(TITLE_NUMBER, '') : `Ask ${number}`, 0)
+  const last = { key: null as string | null }
+  lines.forEach((line, at) => {
+    if (hasTitle && at === titleAt) return
+    const field = line.match(FIELD)
+    if (field !== null && addField(ask, field[1]!, field[2]!.trim(), last)) return
+    appendTo(ask, line, last)
+  })
+  ask.end = lines.length
+  return ask
 }
+
+export type FoundAsks = { asks: Ask[]; isFenced: boolean }
+
+export const findAsks = (text: string): FoundAsks => {
+  const blocks = askBlocks(text)
+  if (blocks.length > 0) return { asks: blocks.map((block, at) => parseAskBlock(block, at + 1)), isFenced: true }
+  return { asks: parseReport(text)?.asks ?? [], isFenced: false }
+}
+
+export const sameAsk = (one: Ask, other: Ask) => one.title.trim().toLowerCase() === other.title.trim().toLowerCase()

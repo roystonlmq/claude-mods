@@ -1,6 +1,6 @@
 {
   "name": "reply-colors",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "description": "Colours Claude's reply text on every surface: headings, bold text and labels, bullets, recommendations, risk and done words, numbers and quotes, with a blank line between list items. Shares its colouring as $.replyColors. Drawing only; the stored text is unchanged",
   "author": {
     "name": "roystonlmq"

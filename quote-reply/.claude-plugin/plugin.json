@@ -1,6 +1,6 @@
 {
   "name": "quote-reply",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "WhatsApp-style Reply under each Claude message: quotes it into your next prompt, plus Reply to selection in the desktop right-click menu",
   "author": {
     "name": "roystonlmq"

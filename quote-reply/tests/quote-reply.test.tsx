@@ -88,6 +88,15 @@ describe('Reply button', () => {
     expect(quote.includes('rm -rf')).toBe(false)
   })
 
+  test('quotes an ask block by its title, not its fence', async ($, on) => {
+    const { filled } = engine(on)
+    await pressReply($, 'Ready.\n\n```ask\nMerge the sorter\nType: merge\nRecommend: yes\n```\nMore text', 'terminal')
+    const quote = filled[0] ?? ''
+    expect(quote.startsWith('> Ready.\n> Ask: Merge the sorter')).toBe(true)
+    expect(quote.includes('Type: merge')).toBe(false)
+    expect(quote.includes('```')).toBe(false)
+  })
+
   test('puts the quote above a draft already typed', async ($, on) => {
     const { filled } = engine(on, 'my half-typed answer')
     await pressReply($, 'Pick A or B?', 'desktop')
