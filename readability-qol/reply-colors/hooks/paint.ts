@@ -1,5 +1,6 @@
 export type Role =
   | 'heading'
+  | 'strong'
   | 'bullet'
   | 'recommend'
   | 'risk'
@@ -37,6 +38,10 @@ const LONE_BOLD = /^\s*(\*\*|__)([^*_].*?)\1\s*:?\s*$/
 
 const isBlank = (line: string | undefined) => line === undefined || line.trim() === ''
 
+const hasContentAfter = (lines: readonly string[], index: number) => lines.slice(index + 1).some(line => !isBlank(line))
+
+const endsSentence = (text: string) => /[.!?…]$/.test(text.trim())
+
 const isTitleLine = (lines: readonly string[], index: number) => {
   const line = lines[index]!.trim()
   if (line.length === 0 || line.length > 60) return false
@@ -47,7 +52,7 @@ const isTitleLine = (lines: readonly string[], index: number) => {
   if (/https?:\/\/|`/.test(line)) return false
   if (line.split(/\s+/).length > 9) return false
   if (index > 0 && !isBlank(lines[index - 1])) return false
-  return !isBlank(lines[index + 1])
+  return hasContentAfter(lines, index)
 }
 
 export const parseLines = (text: string): Line[] => {
@@ -107,7 +112,7 @@ export const parseLines = (text: string): Line[] => {
       continue
     }
     const loneBold = LONE_BOLD.exec(line)
-    if (loneBold !== null && !isBlank(lines[index]) && loneBold[2]!.length <= 60) {
+    if (loneBold !== null && hasContentAfter(lines, index - 1) && loneBold[2]!.length <= 60 && !endsSentence(loneBold[2]!)) {
       out.push({ kind: 'heading', spans: inline(line.trim()) })
       continue
     }

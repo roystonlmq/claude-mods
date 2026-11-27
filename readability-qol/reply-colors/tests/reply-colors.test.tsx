@@ -1,10 +1,10 @@
 import { describe, expect, test } from 'claude-code/testing'
-import type { Engine } from 'claude-code/testing'
-import type { RenderElement } from 'claude-code'
+import type { Engine, TestBody } from 'claude-code/testing'
+import type { ConfigRow, RenderElement } from 'claude-code'
 
 import { inline, paint, parseLines, plainText, spaced, withLabel } from '../hooks/paint'
-import { PALETTES, THEME_INKS } from '../hooks/palettes'
-import { PLAIN_REPLY, MIXED_MARKDOWN, READABLE_REPORT_SUMMARY, SAMPLE_REPLY } from './fixtures'
+import { LIGHT_PALETTES, PALETTES, THEME_INKS } from '../hooks/palettes'
+import { LABELLED_PROSE_REPLY, PLAIN_REPLY, MIXED_MARKDOWN, READABLE_REPORT_SUMMARY, SAMPLE_REPLY } from './fixtures'
 
 const PLUGIN = 'reply-colors'
 const CALM = PALETTES.calm
@@ -126,7 +126,7 @@ describe('markdown and word rules', () => {
     const runs = runsOf(await draw($, MIXED_MARKDOWN))
     expect(colorOf(runs, 'Deploy plan')).toEqual({ text: 'Deploy plan', color: CALM.heading.color, bold: true })
     expect(colorOf(runs, 'Promote')?.color).toBe(CALM.caution.color)
-    expect(colorOf(runs, 'fix')).toEqual({ text: 'fix', bold: true })
+    expect(colorOf(runs, 'fix')).toEqual({ text: 'fix', color: CALM.strong.color, bold: true })
     expect(colorOf(runs, 'fails')?.color).toBe(CALM.risk.color)
     expect(colorOf(runs, 'roll back')?.color).toBe(CALM.caution.color)
     expect(colorOf(runs, 'git revert abc123')?.color).toBe(CALM.code.color)
@@ -234,7 +234,7 @@ describe('surfaces', () => {
     for (const surface of ['desktop', 'vscode', 'mobile'] as const) {
       const tree = await draw($, PLAIN_REPLY, surface)
       const runs = runsOf(tree)
-      expect(colorOf(runs, 'Cancelled, then not cancelled:')).toEqual({ text: 'Cancelled, then not cancelled:', bold: true })
+      expect(colorOf(runs, 'Cancelled, then not cancelled:')).toEqual({ text: 'Cancelled, then not cancelled:', color: THEME_INKS.strong.color, bold: true })
       expect(colorOf(runs, '4 of 52')?.color).toBe(THEME_INKS.number.color)
       expect(colorOf(runs, '- ')?.color).toBe(THEME_INKS.bullet.color)
       expect(runs.some(run => run.text === '⏺')).toBe(false)
@@ -248,7 +248,7 @@ describe('a plain reply with labelled bullets', () => {
     const tree = await draw($, PLAIN_REPLY)
     const runs = runsOf(tree)
     for (const label of ['Cancelled, then not cancelled:', 'Report worker:', 'Watcher:']) {
-      expect(colorOf(runs, label)).toEqual({ text: label, bold: true })
+      expect(colorOf(runs, label)).toEqual({ text: label, color: CALM.strong.color, bold: true })
     }
     expect(colorOf(runs, '21:40')?.color).toBe(CALM.number.color)
     expect(words(runs.map(run => run.text).join(''))).toBe(words(PLAIN_REPLY))
@@ -280,7 +280,7 @@ describe('the shared colouring on $.replyColors', () => {
   ] }, async $ => {
     const runs = runsOf(await draw($, 'CARD'))
     expect(colorOf(runs, 'Recommend: yes')?.color).toBe(VIVID.recommend.color)
-    expect(colorOf(runs, 'Tests:')).toEqual({ text: 'Tests:', bold: true })
+    expect(colorOf(runs, 'Tests:')).toEqual({ text: 'Tests:', color: VIVID.strong.color, bold: true })
     expect(colorOf(runs, '46 of 48')?.color).toBe(VIVID.number.color)
     expect(colorOf(runs, 'passed')?.color).toBe(VIVID.done.color)
     expect(colorOf(runs, 'failed')?.color).toBe(VIVID.risk.color)
@@ -320,7 +320,7 @@ describe('spacing and labels', () => {
 
   test('the drawn status reply bolds "The wider meter:" and keeps every word', async $ => {
     const runs = runsOf(await draw($, SAMPLE_REPLY))
-    expect(colorOf(runs, 'The wider meter:')).toEqual({ text: 'The wider meter:', bold: true })
+    expect(colorOf(runs, 'The wider meter:')).toEqual({ text: 'The wider meter:', color: CALM.strong.color, bold: true })
     expect(words(runs.map(run => run.text).join(''))).toBe(words(SAMPLE_REPLY))
   })
 })
@@ -345,14 +345,14 @@ describe('the README examples', () => {
     expect(colorOf(runs, 'I recommend this')).toEqual({ text: 'I recommend this', color: CALM.recommend.color, bold: true })
     expect(runs.filter(run => run.text === '- ' && run.color === CALM.recommend.color)).toHaveLength(1)
     expect(colorOf(runs, '"Keep prose as prose"')).toEqual({ text: '"Keep prose as prose"', color: CALM.quote.color, italic: true })
-    expect(colorOf(runs, 'The wider meter:')).toEqual({ text: 'The wider meter:', bold: true })
+    expect(colorOf(runs, 'The wider meter:')).toEqual({ text: 'The wider meter:', color: CALM.strong.color, bold: true })
     for (const value of ['94%', 'US$5,000']) expect(colorOf(runs, value)?.color).toBe(CALM.number.color)
     expect(spaced(parseLines(README_EXAMPLE)).map(line => line.kind)).toEqual(['heading', 'item', 'blank', 'item', 'blank', 'heading', 'item'])
   })
 
   test('readability-qol README example draws as described', async $ => {
     const runs = runsOf(await draw($, QOL_README_EXAMPLE))
-    for (const label of ['Report worker:', 'Watcher:']) expect(colorOf(runs, label)).toEqual({ text: label, bold: true })
+    for (const label of ['Report worker:', 'Watcher:']) expect(colorOf(runs, label)).toEqual({ text: label, color: CALM.strong.color, bold: true })
     expect(runs.filter(run => run.text === '- ').every(run => run.color === CALM.bullet.color)).toBe(true)
     for (const value of ['4 of 52', '22:00']) expect(colorOf(runs, value)?.color).toBe(CALM.number.color)
     expect(spaced(parseLines(QOL_README_EXAMPLE)).map(line => line.kind)).toEqual(['text', 'blank', 'item', 'blank', 'item'])
@@ -366,6 +366,118 @@ describe('links', () => {
       const spans = inline(`see [docs](${href})`)
       expect(spans.some(span => span.href !== undefined)).toBe(false)
       expect(spans.map(span => span.text).join('')).toBe('see docs')
+    }
+  })
+})
+
+
+const themeRows = (theme: string): { value: ConfigRow[] } => ({
+  value: [{ key: 'theme', label: 'Theme', kind: 'choice', value: theme, provider: { plugin: 'engine', tier: 'core' } as ConfigRow['provider'], isLocked: false }],
+})
+
+const startWithTheme = async ($: Engine, on: Parameters<TestBody>[1], theme: string) => {
+  on('session.start', (_, e) => ({ cwd: e.cwd }))
+  on('config.list', () => themeRows(theme))
+  on('ui.invalidate', () => ({ value: undefined }))
+  await $.session.start({ cwd: '/', surface: 'terminal', isInteractive: true })
+}
+
+const luminance = (hex: string) => {
+  const [r, g, b] = [1, 3, 5].map(at => {
+    const channel = parseInt(hex.slice(at, at + 2), 16) / 255
+    return channel <= 0.03928 ? channel / 12.92 : ((channel + 0.055) / 1.055) ** 2.4
+  })
+  return 0.2126 * r! + 0.7152 * g! + 0.0722 * b!
+}
+
+const contrast = (a: string, b: string) => {
+  const [hi, lo] = [luminance(a), luminance(b)].sort((x, y) => y - x)
+  return (hi! + 0.05) / (lo! + 0.05)
+}
+
+describe('bold text and heading-like lines', () => {
+  test('bold text and bold-led labels take the strong colour, headings their own', async $ => {
+    const runs = runsOf(await draw($, LABELLED_PROSE_REPLY))
+    for (const title of ['What it does, in order', 'Next step', 'Spend']) {
+      expect(colorOf(runs, title)).toEqual({ text: title, color: CALM.heading.color, bold: true })
+    }
+    for (const label of ['Removes test names:', 'Scans for secrets:', 'The cache is warm.']) {
+      expect(colorOf(runs, label)).toEqual({ text: label, color: CALM.strong.color, bold: true })
+    }
+    expect(CALM.strong.color).not.toBe(CALM.heading.color)
+  })
+
+  test('numbers, outcomes and dates inside bold keep their own colours', async $ => {
+    const runs = runsOf(await draw($, LABELLED_PROSE_REPLY))
+    expect(colorOf(runs, '94%')).toEqual({ text: '94%', color: CALM.number.color, bold: true })
+    expect(colorOf(runs, 'done')).toEqual({ text: 'done', color: CALM.done.color, bold: true })
+    expect(colorOf(runs, ':')).toEqual({ text: ':', color: CALM.strong.color, bold: true })
+    expect(colorOf(runs, '47 of 50')?.color).toBe(CALM.number.color)
+    expect(colorOf(runs, 'passed')?.color).toBe(CALM.done.color)
+    expect(colorOf(runs, '29/11')?.color).toBe(CALM.number.color)
+  })
+
+  test('a bold or short line with a blank line after it is a heading, a bold sentence is not', () => {
+    const kinds = parseLines(LABELLED_PROSE_REPLY).map(line => line.kind)
+    expect(kinds).toEqual(['text', 'blank', 'heading', 'blank', 'item', 'item', 'blank', 'heading', 'blank', 'text', 'blank', 'heading', 'blank', 'text', 'blank', 'item'])
+    expect(parseLines('Intro.\n\n**Closing words**').map(line => line.kind)).toEqual(['text', 'blank', 'text'])
+  })
+
+  test('every word is drawn as written in both palettes and both themes', async $ => {
+    for (const surface of ['terminal', 'desktop'] as const) {
+      const runs = runsOf(await draw($, LABELLED_PROSE_REPLY, surface))
+      expect(words(runs.map(run => run.text).join(''))).toBe(words(LABELLED_PROSE_REPLY.replace(/\*\*|### /g, '')))
+    }
+    expect(plainText(parseLines(LABELLED_PROSE_REPLY))).toBe(LABELLED_PROSE_REPLY.replace(/\*\*|### /g, ''))
+  })
+
+  test('vivid gives bold labels its own strong colour', { options: { palette: 'vivid' } }, async $ => {
+    const runs = runsOf(await draw($, LABELLED_PROSE_REPLY))
+    expect(colorOf(runs, 'Scans for secrets:')?.color).toBe(VIVID.strong.color)
+    expect(colorOf(runs, 'Next step')?.color).toBe(VIVID.heading.color)
+  })
+
+  test('the phone and desktop use theme keys for strong and heading', async $ => {
+    const runs = runsOf(await draw($, LABELLED_PROSE_REPLY, 'mobile'))
+    expect(colorOf(runs, 'Scans for secrets:')?.color).toBe(THEME_INKS.strong.color)
+    expect(colorOf(runs, 'Next step')?.color).toBe(THEME_INKS.heading.color)
+  })
+})
+
+describe('light and dark terminal themes', () => {
+  test('a light theme draws with the light palette', async ($, on) => {
+    await startWithTheme($, on, 'light')
+    const runs = runsOf(await draw($, LABELLED_PROSE_REPLY))
+    expect(colorOf(runs, 'Scans for secrets:')?.color).toBe(LIGHT_PALETTES.calm.strong.color)
+    expect(colorOf(runs, 'Next step')?.color).toBe(LIGHT_PALETTES.calm.heading.color)
+    expect(colorOf(runs, '29/11')?.color).toBe(LIGHT_PALETTES.calm.number.color)
+  })
+
+  test('a light ANSI theme in vivid draws with the vivid light palette', { options: { palette: 'vivid' } }, async ($, on) => {
+    await startWithTheme($, on, 'light-ansi')
+    const runs = runsOf(await draw($, LABELLED_PROSE_REPLY))
+    expect(colorOf(runs, 'Scans for secrets:')?.color).toBe(LIGHT_PALETTES.vivid.strong.color)
+  })
+
+  test('a dark theme keeps the dark palette', async ($, on) => {
+    await startWithTheme($, on, 'dark-daltonized')
+    const runs = runsOf(await draw($, LABELLED_PROSE_REPLY))
+    expect(colorOf(runs, 'Scans for secrets:')?.color).toBe(CALM.strong.color)
+  })
+
+  test('every role reads against its background and strong never matches heading', () => {
+    const sets = [
+      [PALETTES.calm, '#1e1e1e'],
+      [PALETTES.vivid, '#1e1e1e'],
+      [LIGHT_PALETTES.calm, '#ffffff'],
+      [LIGHT_PALETTES.vivid, '#ffffff'],
+    ] as const
+    for (const [palette, ground] of sets) {
+      for (const [role, ink] of Object.entries(palette)) {
+        expect({ role, ok: contrast(ink.color, ground) >= 4.5 }).toEqual({ role, ok: true })
+      }
+      expect(palette.strong.color).not.toBe(palette.heading.color)
+      expect(Object.keys(palette).sort()).toEqual(Object.keys(THEME_INKS).sort())
     }
   })
 })

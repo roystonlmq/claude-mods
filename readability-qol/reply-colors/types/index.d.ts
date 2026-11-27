@@ -1,5 +1,6 @@
 export type ReplyColorsRole =
   | 'heading'
+  | 'strong'
   | 'bullet'
   | 'recommend'
   | 'risk'

@@ -3,13 +3,13 @@ import type { ElementTable, Register, RenderElement } from 'claude-code'
 import type { ReplyColors, ReplyColorsRun, ReplyColorsSurface } from '../types'
 import { paintText, parseLines, spaced } from './paint'
 import type { Line, Span } from './paint'
-import { inksFor, paletteOf } from './palettes'
-import type { Palette } from './palettes'
+import { inksFor, paletteOf, schemeOf } from './palettes'
+import type { Palette, Scheme } from './palettes'
 
 type Node = RenderElement | string
 
 const textProps = (palette: Palette, span: Span) => {
-  const ink = span.role === undefined ? undefined : palette[span.role]
+  const ink = span.role !== undefined ? palette[span.role] : span.bold ? palette.strong : undefined
   return {
     ...(ink !== undefined ? { color: ink.color } : {}),
     ...(span.bold || ink?.bold ? { bold: true } : {}),
@@ -91,10 +91,10 @@ const recolor = (node: Node, paintEngineRow: () => RenderElement, paintMarkdown:
   return node
 }
 
-const replyColorsOf = (palette: Palette): ReplyColors => ({
-  inks: ({ surface }) => ({ ...inksFor(palette, surface) }),
+const replyColorsOf = (palette: () => Palette): ReplyColors => ({
+  inks: ({ surface }) => ({ ...inksFor(palette(), surface) }),
   paint: ({ text, surface }) => {
-    const inks = inksFor(palette, surface)
+    const inks = inksFor(palette(), surface)
     return paintText(text).map((span): ReplyColorsRun => ({
       text: span.text,
       ...textProps(inks, span),
@@ -104,7 +104,8 @@ const replyColorsOf = (palette: Palette): ReplyColors => ({
 })
 
 export const register: Register = (on, options) => {
-  const palette = paletteOf(options.palette)
+  let scheme: Scheme = 'dark'
+  const palette = () => paletteOf(options.palette, scheme)
 
   on('engine.create', async ($, e, next) => {
     const beneath = await next(e)
@@ -113,15 +114,29 @@ export const register: Register = (on, options) => {
 
   on('session.start', async ($, e, next) => {
     const started = await next(e)
+    try {
+      scheme = schemeOf((await $.config.list()).find(row => row.key === 'theme')?.value)
+    } catch {
+      scheme = 'dark'
+    }
     $.ui.invalidate('ui.render')
     return started
+  })
+
+  on('config.set', { key: 'theme' }, async ($, e, next) => {
+    const written = await next(e)
+    if (written.value !== undefined) {
+      scheme = schemeOf(written.value)
+      $.ui.invalidate('ui.render')
+    }
+    return written
   })
 
   on('ui.render', { component: 'AssistantMessage' }, async ($, e, next) => {
     const tree = await next(e)
     if (e.props.isSummary === true || e.props.text.trim() === '') return tree
     const surface: ReplyColorsSurface = e.surface
-    const inks = inksFor(palette, surface)
+    const inks = inksFor(palette(), surface)
     const ui = $.ui.resolve(e)
     const reply = (text: string) => drawReply(ui, inks, text)
     return recolor(

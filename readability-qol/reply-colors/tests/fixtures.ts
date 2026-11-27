@@ -50,3 +50,20 @@ export const PLAIN_REPLY = `Here is where the three worker jobs stand after toni
 - Watcher: it flagged 4 of 52 chats tonight, all for slow replies during the 22:00 peak, and none for wrong answers. That matches last week, so there is no new problem to chase.
 
 If you want, I can add a check so the report worker skips the upload when a copy already exists, which would stop the duplicate from happening again.`
+
+export const LABELLED_PROSE_REPLY = `Synced the three plugins and wired the auto-push.
+
+**What it does, in order**
+
+1. **Removes test names:** swaps real names in fixtures for neutral ones.
+2. Scans for secrets: gitleaks found no leaks in 3 folders.
+
+### Next step
+
+Run it once more on 29/11 to confirm.
+
+Spend
+
+**The cache is warm.**
+
+- **94% done:** 47 of 50 checks passed.`
