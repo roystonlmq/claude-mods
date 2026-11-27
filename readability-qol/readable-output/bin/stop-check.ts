@@ -4,7 +4,7 @@ import { join } from 'node:path'
 
 import { askProblems, blockReason, parseReport } from '../hooks/shape.ts'
 
-export const MAX_BLOCKS_PER_TURN = 2
+export const MAX_BLOCKS_PER_TURN = 1
 
 type StopInput = {
   session_id?: string
@@ -79,12 +79,12 @@ export const decide = (input: StopInput): Decision => {
   const blocksSoFar = input.stop_hook_active === true ? readCount(file) : 0
   const report = parseReport(lastAssistantText(input))
   const problems = report === null ? [] : askProblems(report)
-  if (report === null || problems.length === 0 || blocksSoFar >= MAX_BLOCKS_PER_TURN) {
+  if (problems.length === 0 || blocksSoFar >= MAX_BLOCKS_PER_TURN) {
     writeCount(file, 0)
     return null
   }
   writeCount(file, blocksSoFar + 1)
-  return { decision: 'block', reason: blockReason(report, problems) }
+  return { decision: 'block', reason: blockReason(problems) }
 }
 
 const isMain = process.argv[1] !== undefined && import.meta.url === new URL(`file://${process.argv[1]}`).href

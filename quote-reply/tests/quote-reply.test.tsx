@@ -130,6 +130,19 @@ describe('Reply button', () => {
   })
 })
 
+describe('Reload', () => {
+  test('a fresh load asks every message drawn before it to draw again', async ($, on) => {
+    const invalidated: string[] = []
+    on('session.start', (_, e) => ({ cwd: e.cwd }))
+    on('ui.invalidate', (_, e) => {
+      invalidated.push(e.event)
+      return { value: undefined }
+    })
+    await $.session.start({ cwd: '/', surface: 'terminal', isInteractive: true })
+    expect(invalidated).toEqual(['ui.render'])
+  })
+})
+
 describe('Reply to selection (desktop menu)', () => {
   const MENU = { plugin: PLUGIN, surface: 'desktop', component: 'ContextMenu' } as const
 

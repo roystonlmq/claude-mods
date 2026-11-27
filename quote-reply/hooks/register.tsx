@@ -35,6 +35,12 @@ const reply = async ($: EngineInterface, quote: string, surface: string) => {
 }
 
 export const register: Register = on => {
+  on('session.start', async ($, e, next) => {
+    const started = await next(e)
+    $.ui.invalidate('ui.render')
+    return started
+  })
+
   on('ui.render', { component: 'AssistantMessage' }, async ($, e, next) => {
     const row = await next(e)
     if (e.props.isSummary === true || e.props.text.trim() === '') return row

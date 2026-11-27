@@ -111,6 +111,12 @@ export const register: Register = (on, options) => {
     return { ...beneath, replyColors: replyColorsOf(palette) }
   })
 
+  on('session.start', async ($, e, next) => {
+    const started = await next(e)
+    $.ui.invalidate('ui.render')
+    return started
+  })
+
   on('ui.render', { component: 'AssistantMessage' }, async ($, e, next) => {
     const tree = await next(e)
     if (e.props.isSummary === true || e.props.text.trim() === '') return tree

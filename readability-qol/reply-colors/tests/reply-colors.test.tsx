@@ -53,6 +53,19 @@ const draw = async ($: Engine, text: string, surface: Surface = 'terminal', extr
 const colorOf = (runs: readonly Run[], text: string) => runs.find(run => run.text === text)
 const words = (text: string) => text.replace(/^⏺/, '').replace(/\s+/g, ' ').trim()
 
+describe('reload', () => {
+  test('a fresh load asks every reply drawn before it to draw again', async ($, on) => {
+    const invalidated: string[] = []
+    on('session.start', (_, e) => ({ cwd: e.cwd }))
+    on('ui.invalidate', (_, e) => {
+      invalidated.push(e.event)
+      return { value: undefined }
+    })
+    await $.session.start({ cwd: '/', surface: 'terminal', isInteractive: true })
+    expect(invalidated).toEqual(['ui.render'])
+  })
+})
+
 describe('a long status reply', () => {
   test('section titles become bold headings', async $ => {
     const runs = runsOf(await draw($, SAMPLE_REPLY))

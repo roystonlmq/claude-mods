@@ -228,6 +228,16 @@ describe('Not ready', () => {
     }
   })
 
+  test('a spend ask with no time in Yes means keeps its Yes button and shows a hint', async ($, on) => {
+    engine(on)
+    const text = 'Ready.\n\n### Needs you\n1. Start the rollout watcher\n   Type: spend\n   Recommend: yes\n   Yes means: a worker watches the rollout chats.\n   No means: nothing happens.\n   Cost: about $2\n   Delivers: a list of bad chats\n   When: after the rollout\n'
+    const ui = await $.ui.mount(message(text, 'terminal', 'hint'))
+    expect(await ui.find({ type: 'Text', text: /Hint: no when it happens in "Yes means"/ })).toBeDefined()
+    expect(await ui.find({ type: 'Text', text: /Not ready/ })).toBe(undefined)
+    expect(await ui.find({ type: 'Button', key: 'yes-1' })).toBeDefined()
+    await ui.unmount()
+  })
+
   test('a choice missing examples shows no option buttons', async ($, on) => {
     engine(on)
     await press($, BAD_REPORT, 'terminal', ['skip-1', 'skip-2', 'skip-3', 'skip-4'])

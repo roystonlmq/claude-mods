@@ -1,8 +1,8 @@
 import { describe, expect, test } from 'claude-code/testing'
 
-import { askProblems, blockReason, codeNamesIn, hasWhen, missingParts, parseReport } from '../hooks/shape'
+import { askProblems, blockReason, codeNamesIn, hasWhen, missingParts, parseReport, timingHints } from '../hooks/shape'
 import { answersMessage, freshStep, withPick } from '../hooks/steps'
-import { BAD_REPORT, GOOD_REPORT, PLAIN_CHAT, PROMOTE_NO_FAILURE_REASON } from './fixtures'
+import { BAD_REPORT, GOOD_REPORT, INCOMPLETE_ASK, PLAIN_CHAT, PROMOTE_NO_FAILURE_REASON, PROSE_STATUS } from './fixtures'
 
 const parsed = (text: string) => {
   const report = parseReport(text)
@@ -92,10 +92,10 @@ describe('required parts', () => {
     expect(problemFor(BAD_REPORT, 4)).toEqual(['the draft text', 'why now'])
   })
 
-  test('an ask without a type, a No means or a dated Yes means is caught', async () => {
+  test('an ask without a type or a No means is caught, and a merge needs no date', async () => {
     expect(problemFor(BAD_REPORT, 5)[0]).toBe('a type (one of promote, delete, merge, message, spend, choice, decide)')
     const merge = problemFor(BAD_REPORT, 1)
-    expect(merge.includes('a date or time in "Yes means"')).toBe(true)
+    expect(merge.some(part => part.startsWith('when it happens'))).toBe(false)
     expect(merge.includes('"No means"')).toBe(true)
     expect(merge.includes('plain words instead of code names (move WP1 to the Ref line)')).toBe(true)
   })
@@ -117,13 +117,46 @@ describe('required parts', () => {
 
   test('words that only mention unknown, or a blank part, are still caught', async () => {
     const text = 'Needs you: one ask\n\n### Needs you\n1. Merge the cleanup fix\n   Type: merge\n   Recommend: yes\n   Yes means: the unknown cases get handled.\n   No means: it waits until 01/12.\n   Behaviour change: the job skips protected changes.\n   Tests:\n   Still open: nothing\n'
-    expect(missingParts(parsed(text).asks[0]!)).toEqual(['a date or time in "Yes means"', 'test results ("Tests: X of Y passed")'])
+    expect(missingParts(parsed(text).asks[0]!)).toEqual(['test results ("Tests: X of Y passed")'])
+  })
+
+  test('a missing time is a card hint for promote, spend and message only, never a missing part', async () => {
+    const ask = (type: string) =>
+      `Needs you: one ask\n\n### Needs you\n1. Do the thing\n   Type: ${type}\n   Recommend: yes\n   Yes means: it happens.\n   No means: it does not.\n`
+    const timing = (type: string) => {
+      const one = parsed(ask(type)).asks[0]!
+      expect(missingParts(one).some(part => part.startsWith('when it happens'))).toBe(false)
+      return timingHints(one)
+    }
+    expect(timing('decide')).toEqual([])
+    expect(timing('delete')).toEqual([])
+    expect(timing('merge')).toEqual([])
+    expect(timing('promote')).toEqual(['when it happens in "Yes means" (today, 29/11, 16:00)'])
+    expect(timing('spend').length).toBe(1)
+    expect(timing('message').length).toBe(1)
+  })
+
+  test('a prose status reply with headings and no asks has no problems', async () => {
+    const report = parseReport(PROSE_STATUS)
+    expect(report === null ? [] : askProblems(report)).toEqual([])
+  })
+
+  test('the block reason for an incomplete ask names only what is missing', async () => {
+    const report = parsed(INCOMPLETE_ASK)
+    const problems = askProblems(report)
+    expect(problems.map(one => one.ask)).toEqual([1])
+    const reason = blockReason(problems)
+    expect(reason.includes('whether it can be restored')).toBe(true)
+    expect(reason.includes('Ask 2')).toBe(false)
+    expect(reason.includes('whole report')).toBe(false)
+    expect(reason.includes('headline')).toBe(false)
+    expect(reason.includes('A delete ask has: "What goes:"; "Restorable:" yes with how long, or no; "If wrong:".')).toBe(true)
   })
 
   test('the block reason names the ask and its missing parts', async () => {
     const report = parsed(PROMOTE_NO_FAILURE_REASON)
-    const reason = blockReason(report, askProblems(report))
-    expect(reason.includes('Ask 1 "Put the approved Acme fix batch live" (promote): missing failure details for 2 of 2 failed tests')).toBe(true)
+    const reason = blockReason(askProblems(report))
+    expect(reason.includes('Ask 1 "Put the approved Acme fix batch live" (promote): add failure details for 2 of 2 failed tests')).toBe(true)
   })
 
   test('dates and code names are recognised', async () => {

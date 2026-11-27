@@ -3,7 +3,7 @@ import type { ElementTable, EngineInterface, PromptOrigin, Register, RenderEleme
 
 import type { PendingChange, Pick, Step } from '../types'
 import type { CardInk, CardInkRole, CardRun, CardSurface } from '../types/reply-colors'
-import { missingParts, parseReport } from './shape'
+import { missingParts, parseReport, timingHints } from './shape'
 import type { Ask, AskType, Report } from './shape'
 import {
   answeredCount,
@@ -306,6 +306,7 @@ export const register: Register = on => {
     const askView = (ask: Ask) => {
       const missing = missingParts(ask)
       const isReady = missing.length === 0
+      const hints = timingHints(ask)
       const tag = ask.type === undefined ? undefined : TYPE_TAGS[ask.type]
       const isChanging = pending !== null && pending.report === key && pending.ask === ask.number
       const pick = (one: Pick) => () => answer($, key, report, ask, one)
@@ -337,6 +338,7 @@ export const register: Register = on => {
           {painted?.trails.map((part, index) => partBlock(`trail-${index}`, part))}
           {ask.ref !== undefined && [<Text> </Text>, <Text dimColor>Ref: {ask.ref}</Text>]}
           {!isReady && [<Text> </Text>, <Text color="error" bold>Not ready: {missing.join('; ')}</Text>]}
+          {hints.length > 0 && [<Text> </Text>, <Text color="warning">Hint: no {hints.join('; ')}</Text>]}
           {isChanging && [<Text> </Text>, <Text color="warning">Changing: type it in the field under the reply, or send it as your next message to Claude.</Text>]}
           <Text> </Text>
           <Box flexDirection="row" flexWrap="wrap" columnGap={1}>

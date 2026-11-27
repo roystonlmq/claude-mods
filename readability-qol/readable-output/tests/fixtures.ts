@@ -193,3 +193,31 @@ Three of the five can move today. The other two stay where they are until their 
    The fourth and fifth tickets are not part of this ask.
    Ref: APAC-101 · APAC-102 · APAC-103
 `
+
+export const PROSE_STATUS = `The cleanup job ran cleanly overnight and nothing needs you.
+
+### Done
+The job cleared **10 old Beta changes**, each saved first and restorable for **30 days**.
+
+### Running
+The next run starts at **16:00**. I will check its log then.
+
+**Why it skipped 9 changes:** they were waiting for a named reviewer, which the new rule protects.
+`
+
+export const INCOMPLETE_ASK = `The August draft is the only stale change left, and removing it frees a slot.
+
+### Needs you
+1. Delete the August driver-rating draft
+   Type: delete
+   Recommend: yes
+   Yes means: it is removed and frees one of 20 change slots.
+   No means: it stays and keeps the slot.
+   What goes: a draft of the driver-rating flow from August that was never put live.
+   If wrong: nothing live breaks; the draft would be rebuilt by hand.
+2. Keep the hourly schedule
+   Type: decide
+   Recommend: yes
+   Yes means: the job keeps running every hour.
+   No means: it runs once a day instead.
+`

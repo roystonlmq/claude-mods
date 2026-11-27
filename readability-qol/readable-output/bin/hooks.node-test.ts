@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { test } from 'node:test'
 
-import { BAD_REPORT, GOOD_REPORT, PLAIN_CHAT, PROMOTE_NO_FAILURE_REASON } from '../tests/fixtures.ts'
+import { BAD_REPORT, GOOD_REPORT, INCOMPLETE_ASK, PLAIN_CHAT, PROMOTE_NO_FAILURE_REASON, PROSE_STATUS } from '../tests/fixtures.ts'
 import { REPORT_SHAPE } from '../hooks/prompt.ts'
 import { MAX_BLOCKS_PER_TURN, decide } from './stop-check.ts'
 
@@ -22,10 +22,22 @@ test('lets a plain chat reply through', () => {
   assert.equal(decide({ session_id: session(), last_assistant_message: PLAIN_CHAT }), null)
 })
 
+test('lets a prose status reply through with no state-word headline', () => {
+  assert.equal(decide({ session_id: session(), last_assistant_message: PROSE_STATUS }), null)
+})
+
+test('blocks an incomplete ask and asks only for its missing parts', () => {
+  const reason = decide({ session_id: session(), last_assistant_message: INCOMPLETE_ASK })?.reason ?? ''
+  assert.match(reason, /- Ask 1 "Delete the August driver-rating draft" \(delete\): add whether it can be restored/)
+  assert.doesNotMatch(reason, /Ask 2/)
+  assert.doesNotMatch(reason, /whole report/i)
+  assert.match(reason, /Reply with only these asks/)
+})
+
 test('blocks a promote ask with no failure explanation and names it', () => {
   const decision = decide({ session_id: session(), last_assistant_message: PROMOTE_NO_FAILURE_REASON })
   assert.equal(decision?.decision, 'block')
-  assert.match(decision?.reason ?? '', /Ask 1 "Put the approved Acme fix batch live" \(promote\): missing failure details for 2 of 2 failed tests/)
+  assert.match(decision?.reason ?? '', /Ask 1 "Put the approved Acme fix batch live" \(promote\): add failure details for 2 of 2 failed tests/)
 })
 
 test('names every ask with missing parts in the bad report', () => {
@@ -33,16 +45,20 @@ test('names every ask with missing parts in the bad report', () => {
   for (const ask of [1, 2, 3, 4, 5]) assert.match(reason, new RegExp(`- Ask ${ask} "`))
 })
 
-test(`blocks at most ${MAX_BLOCKS_PER_TURN} times in one turn, then lets it through`, () => {
+test(`blocks at most ${MAX_BLOCKS_PER_TURN} time in one turn, then lets it through`, () => {
+  assert.equal(MAX_BLOCKS_PER_TURN, 1)
   const id = session()
   const first = decide({ session_id: id, stop_hook_active: false, last_assistant_message: BAD_REPORT })
   const second = decide({ session_id: id, stop_hook_active: true, last_assistant_message: BAD_REPORT })
-  const third = decide({ session_id: id, stop_hook_active: true, last_assistant_message: BAD_REPORT })
   assert.equal(first?.decision, 'block')
-  assert.equal(second?.decision, 'block')
-  assert.equal(third, null)
+  assert.equal(second, null)
   const nextTurn = decide({ session_id: id, stop_hook_active: false, last_assistant_message: BAD_REPORT })
   assert.equal(nextTurn?.decision, 'block')
+})
+
+test('does not block an ask whose only gap is a missing date', () => {
+  const text = 'Ready to go live.\n\n### Needs you\n1. Start the rollout watcher\n   Type: spend\n   Recommend: yes\n   Yes means: a worker watches the rollout chats.\n   No means: nothing happens.\n   Cost: about $2\n   Delivers: a list of bad chats\n   When: after the rollout\n'
+  assert.equal(decide({ session_id: session(), last_assistant_message: text }), null)
 })
 
 test('reads the last reply from the transcript when the hook input has none', () => {
@@ -69,7 +85,11 @@ test('the session start script adds the report shape as session context', () => 
   assert.equal(output.hookSpecificOutput.additionalContext, REPORT_SHAPE)
 })
 
-test('the session-start prompt asks for short bullets with a bold lead label in long replies', () => {
-  assert.match(REPORT_SHAPE, /# Any reply longer than a few lines/)
-  assert.match(REPORT_SHAPE, /one idea each, each starting with a short bold label and a colon/)
+test('the session-start prompt keeps the card shape for asks and asks for formatted prose otherwise', () => {
+  assert.match(REPORT_SHAPE, /Use the card shape only when the reply asks the user to decide/)
+  assert.match(REPORT_SHAPE, /blank line between each/)
+  assert.match(REPORT_SHAPE, /Key facts in bold/)
+  assert.doesNotMatch(REPORT_SHAPE, /State words/)
+  assert.doesNotMatch(REPORT_SHAPE, /Safe because/)
+  assert.ok(REPORT_SHAPE.split(/\s+/).length < 300)
 })

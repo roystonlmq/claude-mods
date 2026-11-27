@@ -1,8 +1,11 @@
 # readable-output
 
-Makes Claude's status reports easy to read and answer, in the terminal and on the phone.
+Makes Claude's replies easy to read, and its asks easy to answer, in the terminal and on the phone.
 
-With the SessionStart hook below, Claude writes every report in one fixed shape: a headline that starts with a state word, then Done, Caught, Not possible, Needs you and Running. Each ask under Needs you says what type it is, what Claude recommends, what Yes means and what No means, with a date. Each type also carries the facts you need to decide:
+The SessionStart hook below tells Claude two things, in about 230 words:
+
+- **Most replies are prose.** Status updates and explanations open with a short lead line, then use a bold label or small heading per topic, short paragraphs with a blank line between each, and key facts (numbers, dates, names, outcomes, risks) in bold, so reply-colors can colour them. There is no fixed headline or section list.
+- **Asks get a card.** Only when a reply asks the user to decide something does it use the card shape: numbered asks under a "### Needs you" heading. Each ask has a type, a recommendation, "Yes means" and "No means", and a Ref line for code names. Promote, spend and message asks should say when Yes happens (today, 29/11, 16:00); if they don't, the card shows a hint but still offers Yes. The session text does not list each type's extra parts. The Stop check lists them only when an ask of that type is missing one:
 
 | Ask type | What it must say |
 | --- | --- |
@@ -18,7 +21,7 @@ Code names such as pull request numbers, work-package labels and hashes go on a 
 
 ## What you see
 
-The mod redraws each report as a step-through. It never hides text: every line of the reply is drawn, either in the text above the card or on the card itself.
+The mod redraws each reply that has numbered asks under Needs you as a step-through. Prose replies are left as they are. It never hides text: every line of the reply is drawn, either in the text above the card or on the card itself.
 
 - The text above the card is the whole reply except the ask the card shows, so prose answers, explanations and the other asks stay readable.
 - The card shows every line of its ask, including parts it has no special label for and loose lines, under Also.
@@ -32,19 +35,21 @@ The mod redraws each report as a step-through. It never hides text: every line o
   - Phone: Send sends it straight away.
 - Change opens a text field in the band under the reply. Or type it as your next message: it goes to Claude exactly as typed, and the mod also keeps it as that ask's change. No typed prompt is ever held back.
 
-If an ask is missing a required part, its card shows "Not ready" and the missing part, and has no Yes button.
+If an ask is missing a required part, its card shows "Not ready" and the missing part, and has no Yes button. A promote, spend or message ask with no time in Yes means shows a "Hint" line instead and keeps its Yes button.
 
 ## With other mods
 
 - reply-colors: the card asks reply-colors for its colours (`$.replyColors.inks` and `$.replyColors.paint`), so the card follows the palette chosen in reply-colors' settings (calm or vivid) in the terminal, and theme colours on the desktop app, VS Code and the phone. reply-colors also colours the summary above the card. If reply-colors is off, the card draws with its own theme colours and plain values, and nothing else changes.
 
-## Long plain replies
-
-The SessionStart text also asks Claude, for any reply longer than about 6 lines, to lead with one sentence, then use short "- **Label:** one idea" bullets of 2 lines or fewer, with a blank line between paragraphs. This is a prompt rule only. The Stop hook does not block a long reply for its style, because a block costs a full extra turn and style is a judgement call; it still blocks only for missing ask parts.
-
 ## The check before a reply ends
 
-An optional Stop hook reads each finished reply. If an ask is missing a required part, Claude is sent back to fill it in, with the ask and the missing parts named. A part that plainly says its fact is unknown, such as "Tests: not run yet" or "Restorable: unknown, I will check today", counts as filled. Failure details for a go-live ask still need what failed, why and why it is safe. It sends a reply back at most twice per turn. After that the reply goes through, and the mod marks those asks Not ready.
+An optional Stop hook reads each finished reply. It makes no model call. It runs the same rule-based parser that the card uses.
+
+- Replies with no "Needs you" section that holds numbered asks go straight through. That covers prose, status updates and explanations, with or without headings or a state word.
+- A missing date never blocks a reply; it shows as a hint on the card.
+- If an ask is missing a required part, Claude is sent back once with only those asks, the parts they are missing and the full part list for their type. It is told to reply with just those asks under "### Needs you", without repeating the rest of the reply. Complete asks are not mentioned.
+- A part that plainly says its fact is unknown, such as "Tests: not run yet" or "Restorable: unknown, I will check today", counts as filled. Failure details for a go-live ask still need what failed, why and why it is safe.
+- It sends a reply back at most once per turn. After that the reply goes through, and the card marks those asks Not ready.
 
 ## Install
 
@@ -55,7 +60,7 @@ An optional Stop hook reads each finished reply. If an ask is missing a required
 
 reply-colors is optional. Install readable-output with project scope to keep it to one project.
 
-The plugin draws the card. Two command hooks, added by hand to that project's `.claude/settings.json`, give Claude the report shape and run the check. They need Node 22.6 or later (it runs the `.ts` files directly). Point them at the installed copy, `~/.claude/plugins/cache/claude-mods/readable-output/<version>/`, or at a checkout:
+The plugin draws the card. Two command hooks, added by hand to that project's `.claude/settings.json`, give Claude the reply guidance and run the check. They need Node 22.6 or later (it runs the `.ts` files directly). Point them at the installed copy, `~/.claude/plugins/cache/claude-mods/readable-output/<version>/`, or at a checkout:
 
 ```json
 "hooks": {
@@ -66,10 +71,10 @@ The plugin draws the card. Two command hooks, added by hand to that project's `.
 
 ## Example
 
-A report written in the shape:
+An ask written in the card shape:
 
 ```
-Needs you: the fix batch is ready to go live
+The fix batch is ready to go live.
 
 ### Needs you
 1. Put the approved fix batch live
@@ -89,7 +94,7 @@ is drawn as one card with a progress bar, each part under a bold label, the GO L
 ## Turn it off
 
 - Everything: delete the SessionStart and Stop entries that mention `readable-output`, then `claude plugin uninstall readable-output@claude-mods --scope project`.
-- Only the drawing: `claude plugin disable readable-output@claude-mods --scope project`. Claude still writes the shape, and the check still runs.
+- Only the drawing: `claude plugin disable readable-output@claude-mods --scope project`. Claude still writes asks in the card shape, and the check still runs.
 - Only the check: delete the Stop entry.
 
 Changes to the settings hooks take effect in the next session.

@@ -290,6 +290,10 @@ export const statesUnknown = (text: string | undefined) => !isBlank(text) && STA
 
 const isUnknown = (text: string | undefined) => isBlank(text) || statesUnknown(text)
 
+export const TIMED_TYPES: readonly AskType[] = ['promote', 'spend', 'message']
+
+const isTimed = (ask: Ask) => ask.type !== undefined && TIMED_TYPES.includes(ask.type)
+
 const RECOMMEND = /^(?:yes|no|your call|option\s+\w+|skip|change)\b/i
 
 const baseMissing = (ask: Ask) => {
@@ -300,9 +304,7 @@ const baseMissing = (ask: Ask) => {
   }
   if (ask.type !== 'choice') {
     if (isBlank(ask.fields.yes)) missing.push('"Yes means"')
-    else if (!hasWhen(ask.fields.yes!) && !statesUnknown(ask.fields.yes)) missing.push('a date or time in "Yes means"')
     if (isBlank(ask.fields.no)) missing.push('"No means"')
-    else if (!hasWhen(ask.fields.no!) && !statesUnknown(ask.fields.no)) missing.push('a date or time in "No means"')
   }
   return missing
 }
@@ -398,29 +400,37 @@ export const missingParts = (ask: Ask): string[] => {
   return missing
 }
 
+export const timingHints = (ask: Ask): string[] =>
+  isTimed(ask) && !isBlank(ask.fields.yes) && !hasWhen(ask.fields.yes!) && !statesUnknown(ask.fields.yes)
+    ? ['when it happens in "Yes means" (today, 29/11, 16:00)']
+    : []
+
+export const TYPE_PARTS: Record<AskType, string> = {
+  promote:
+    '"Tests: X of Y passed"; per failed test "Failed: what. Why: why. Safe because: why it is still safe."; "Customer change:"; "Example:" one sample chat; "Rollback:"',
+  delete: '"What goes:"; "Restorable:" yes with how long, or no; "If wrong:"',
+  merge: '"Behaviour change:"; "Tests: X of Y passed"; "Still open:" (nothing if none)',
+  message: '"To:"; "Draft:" with the text on lines starting "> "; "Why now:"',
+  spend: '"Cost:"; "Delivers:"; "When:"',
+  choice: 'two or more "Option A: outcome. Example: ..." lines instead of Yes means and No means',
+  decide: 'only the common parts',
+}
+
 export const askProblems = (report: Report): AskProblem[] =>
   report.asks.flatMap(ask => {
     const missing = missingParts(ask)
     return missing.length === 0 ? [] : [{ ask: ask.number, title: ask.title, type: ask.type, missing }]
   })
 
-export const reportProblems = (report: Report): string[] => {
-  const problems: string[] = []
-  if (report.state === undefined) {
-    problems.push(`the headline does not start with a state word (${STATE_WORDS.join(', ')})`)
-  }
-  return problems
-}
-
-export const blockReason = (report: Report, problems: readonly AskProblem[]) => {
+export const blockReason = (problems: readonly AskProblem[]) => {
   const lines = problems.map(
-    one => `- Ask ${one.ask} "${one.title}"${one.type ? ` (${one.type})` : ''}: missing ${one.missing.join('; ')}.`,
+    one =>
+      `- Ask ${one.ask} "${one.title}"${one.type ? ` (${one.type})` : ''}: add ${one.missing.join('; ')}.` +
+      (one.type === undefined ? '' : ` A ${one.type} ask has: ${TYPE_PARTS[one.type]}.`),
   )
-  const head = reportProblems(report).map(problem => `- Report: ${problem}.`)
   return [
-    'Readable replies check: some asks in this report are missing required parts, so the user cannot answer them yet.',
-    ...head,
+    'Readable replies check: these asks are missing parts, so their cards cannot offer Yes yet.',
     ...lines,
-    'Write the whole report again in the fixed shape with these parts filled in. Use only facts you have; if a fact is unknown, say so plainly in that part (for example "Rollback: unknown, I will check before going live").',
+    'Reply with only these asks under "### Needs you", same numbers and titles, with the missing parts added. Do not repeat the rest of the reply. If a fact is unknown, write that in the part (for example "Rollback: unknown, I will check").',
   ].join('\n')
 }
