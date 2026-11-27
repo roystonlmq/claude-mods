@@ -1,0 +1,18 @@
+{
+  "name": "reply-colors",
+  "version": "0.2.0",
+  "description": "Colours Claude's reply text on every surface: headings, bullets, labels, recommendations, risk and done words, numbers and quotes, with a blank line between list items. Shares its colouring as $.replyColors. Drawing only; the stored text is unchanged",
+  "userConfig": {
+    "palette": {
+      "type": "string",
+      "title": "Palette",
+      "description": "calm: soft colours (default). vivid: brighter colours.",
+      "default": "calm",
+      "options": [
+        "calm",
+        "vivid"
+      ]
+    }
+  },
+  "types": "./types/index.d.ts"
+}

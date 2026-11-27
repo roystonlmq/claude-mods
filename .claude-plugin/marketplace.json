@@ -1,0 +1,23 @@
+{
+  "name": "claude-mods",
+  "owner": {
+    "name": "roystonlmq"
+  },
+  "plugins": [
+    {
+      "name": "reply-colors",
+      "source": "./readability-qol/reply-colors",
+      "description": "readability-qol: colours Claude's replies (headings, labels, recommendations, risk and done words, numbers, quotes) and spaces list items. Drawing only"
+    },
+    {
+      "name": "readable-output",
+      "source": "./readability-qol/readable-output",
+      "description": "readability-qol: redraws status reports as a step-through of asks with Yes, No, Change, Skip and one Send. Colours come from reply-colors when it is on"
+    },
+    {
+      "name": "quote-reply",
+      "source": "./quote-reply",
+      "description": "WhatsApp-style Reply under each Claude message, and Reply to selection in the desktop right-click menu"
+    }
+  ]
+}

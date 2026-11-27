@@ -1,0 +1,170 @@
+export const GOOD_REPORT = `Needs you: Acme cleanup job is live with the 4-day rule
+
+### Done
+- Clears Acme bot changes left idle for 4 days, and test-only changes after about 2 days. Changes marked keep, waiting for approval, being rolled out or owned by Acme are never touched.
+- Cleared 10 old Beta bot changes, each saved first and restorable for 30 days. Beta now uses 4 of its 20 change slots, down from 14.
+- Runs every hour. First run deleted nothing and skipped 9 protected changes.
+
+### Caught
+- Two bot changes waiting for Dana had no "keep" mark and would have been deleted on 29/11. See ask 1.
+
+### Not possible
+- The platform's own cleanup setting can't do the 4-day rule safely. See ask 2.
+
+### Needs you (reply like "1 yes, 2 yes, 5 change: wait for the third batch")
+1. Stop the cleanup job deleting two Acme bot changes that are waiting for Dana
+   Type: merge
+   Recommend: yes
+   Yes means: on 29/11 these two changes stay, protected until 15/12.
+   No means: on 29/11 they are deleted and the rider-fee work has to be rebuilt.
+   Behaviour change: the job skips any change waiting for a named reviewer.
+   Tests: 12 of 12 passed
+   Still open: nothing
+   Ref: PR app#133 · WP1
+2. Switch off the platform's built-in cleanup and let our job do it
+   Type: decide
+   Recommend: yes
+   Yes means: from today only our job deletes old changes, and it skips the protected ones.
+   No means: it stays at 30 days; on 29/11 a 4-day setting would delete the change waiting for your go-live.
+   Ref: platform stale-changeset setting
+3. Put the approved Acme fix batch live
+   Type: promote
+   Recommend: your call
+   Yes means: the batch goes live on Acme chats today at 16:00.
+   No means: it waits until 01/12, and the cleanup job keeps protecting it.
+   Tests: 46 of 48 passed
+   Failed: a rider asking for a refund in Tagalog got the English article. Why: the Tagalog article is still in review. Safe because: today Tagalog riders already get the English article, so nothing gets worse.
+   Failed: a timeout on the order lookup in the test sandbox. Why: the sandbox order service was down for 3 minutes. Safe because: the same test passed on the rerun at 14:10 and live lookups are unchanged.
+   Customer change: riders asking why they were charged a cancellation fee now get the fee rule and a refund check, instead of a generic apology.
+   Example: Rider: "Why was I charged 50 pesos?" Bot: "You cancelled 6 minutes after the driver accepted, so the fee applies. If the driver was late, I can check for a refund."
+   Rollback: re-promote yesterday's version from the change history; takes about 5 minutes.
+   Ref: changeset 3f9a2c1d
+4. Delete an old Acme bot change nobody uses
+   Type: delete
+   Recommend: your call
+   Yes means: today it is removed and frees one of 20 change slots.
+   No means: it stays and keeps the slot; the next cleanup run on 26/11 skips it again.
+   What goes: a draft of the driver-rating flow from August that was never put live.
+   Restorable: yes, for 30 days from the saved copy.
+   If wrong: nothing live breaks; the August draft work would have to be redone from the saved copy.
+   Ref: changeset 6ad1d2c9
+5. Give Dana the ops note in her 01/12 update
+   Type: message
+   Recommend: yes
+   Yes means: no extra message now; she reads it on 01/12.
+   No means: I send it today as a separate message.
+   To: Dana (Acme ops lead)
+   Draft:
+   > Hi Dana, two bot changes waiting for you are now protected until 15/12, so nothing you are reviewing will be cleared.
+   Why now: her weekly update goes out on 01/12 and this fits there.
+6. Start a worker that watches the first live rollout's chats
+   Type: spend
+   Recommend: your call
+   Yes means: from tomorrow a worker reads live chats every hour and flags problems to you here.
+   No means: I check the rollout by hand on 27/11.
+   Cost: about 3 dollars a day in model calls for 3 days.
+   Delivers: a short list of chats that went wrong, with the reason for each.
+   When: first list on 27/11 at 09:00.
+7. Show one help article to 4-wheel drivers only
+   Type: choice
+   Recommend: option A
+   Option A: only 4-wheel drivers see the article. Example: a motorbike rider asking about tolls gets the motorbike toll answer.
+   Option B: everyone sees it with a note at the top. Example: a motorbike rider sees "For cars only" above the toll article.
+
+### Running
+- The first and third work batches.
+`
+
+export const BAD_REPORT = `Acme cleanup job update
+
+### Done
+- Cleanup job live (PR app#133), 10 Beta changesets cleared.
+
+### Needs you
+1. Merge WP1 keep-marker fix
+   Type: merge
+   Recommend: yes
+   Yes means: changes waiting for Dana stay.
+   Tests: 12 of 12 passed
+   Behaviour change: the job skips any change waiting for a named reviewer.
+   Still open: nothing
+2. Put the approved Acme fix batch live
+   Type: promote
+   Recommend: your call
+   Yes means: the batch goes live on Acme chats today.
+   No means: it waits until 01/12.
+   Tests: 46 of 48 passed
+   Customer change: riders get the fee rule and a refund check.
+3. Delete an old Acme bot change nobody uses
+   Type: delete
+   Recommend: your call
+   Yes means: today it is removed.
+   No means: it stays; the next run on 26/11 skips it.
+4. Tell Dana about the ops note
+   Type: message
+   Recommend: yes
+   Yes means: I send it today.
+   No means: she reads it on 01/12.
+   To: Dana
+5. Pick which drivers see the toll article
+   Recommend: option A
+   Option A: only 4-wheel drivers.
+   Option B: everyone, with a note.
+
+### Running
+- WP2 and WP3.
+`
+
+export const PROMOTE_NO_FAILURE_REASON = `Needs you: Acme fix batch is ready to go live
+
+### Done
+- The fix batch passed review.
+
+### Needs you
+1. Put the approved Acme fix batch live
+   Type: promote
+   Recommend: yes
+   Yes means: the batch goes live on Acme chats today at 16:00.
+   No means: it waits until 01/12.
+   Tests: 46 of 48 passed
+   Customer change: riders asking about a cancellation fee get the fee rule and a refund check.
+   Example: Rider: "Why was I charged 50 pesos?" Bot: "You cancelled 6 minutes after the driver accepted, so the fee applies."
+   Rollback: re-promote yesterday's version; about 5 minutes.
+`
+
+export const PLAIN_CHAT = `Sure, the cleanup job is running. I'll check back on it at 16:00.`
+
+export const SAMPLE_ASK = `Needs you: the approved Acme fix batch is ready to go live
+
+### Done
+- The fix batch passed review on 26/11.
+
+### Needs you
+1. Put the approved Acme fix batch live
+   Type: promote
+   Recommend: your call
+   Yes means: the batch goes live on Acme chats today at 16:00.
+   No means: it waits until 01/12, and the cleanup job keeps protecting it.
+   Tests: 46 of 48 passed
+   Failed: a rider asking for a refund in Tagalog got the English article. Why: the Tagalog article is still in review. Safe because: today Tagalog riders already get the English article, so nothing gets worse.
+   Failed: a timeout on the order lookup in the test sandbox. Why: the sandbox order service was down for 3 minutes. Safe because: the same test passed on the rerun at 14:10 and live lookups are unchanged.
+   Customer change: riders asking why they were charged a cancellation fee now get the fee rule and a refund check, instead of a generic apology.
+   Example: Rider: "Why was I charged 50 pesos?" Bot: "You cancelled 6 minutes after the driver accepted, so the fee applies. If the driver was late, I can check for a refund."
+   Rollback: re-promote yesterday's version from the change history; takes about 5 minutes.
+   Ref: changeset 3f9a2c1d
+2. Stop the cleanup job deleting two Acme bot changes that are waiting for Dana
+   Type: merge
+   Recommend: yes
+   Yes means: on 29/11 these two changes stay, protected until 15/12.
+   No means: on 29/11 they are deleted and the rider-fee work has to be rebuilt.
+   Behaviour change: the job skips any change waiting for a named reviewer.
+   Tests: 12 of 12 passed
+   Still open: nothing
+   Ref: PR app#133 · WP1
+3. Switch off the platform's built-in cleanup and let our job do it
+   Type: decide
+   Recommend: yes
+   Yes means: from today only our job deletes old changes, and it skips the protected ones.
+   No means: it stays at 30 days; on 29/11 a 4-day setting would delete the change waiting for your go-live.
+   Ref: platform stale-changeset setting
+`
