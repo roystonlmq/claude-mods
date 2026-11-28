@@ -3,7 +3,7 @@
 Quality-of-life mods that make Claude's output easier to read and answer, in the terminal, the desktop app, VS Code and on the phone. Two plugins that work alone or together:
 
 - [reply-colors](reply-colors/): colours every reply. Headings, labels, recommendations, risk and done words, numbers and quotes stand out, and list items get a blank line between them. Drawing only: the stored text is unchanged.
-- [readable-output](readable-output/): asks Claude to write status reports in one fixed shape, then redraws each report as a step-through of its asks with Yes, No, Change, Skip and one Send.
+- [readable-output](readable-output/): asks Claude, through an output style, to write readable prose and fenced asks, then redraws each report as a step-through of its asks with Yes, No, Change, Skip and one Send.
 
 With both on, the report card takes its colours from reply-colors (`$.replyColors`), so there is one palette and one set of colour rules.
 
@@ -26,4 +26,4 @@ is drawn with "Report worker:" and "Watcher:" in bold, the bullet markers in sof
 /plugin install readable-output --marketplace roystonlmq/claude-mods
 ```
 
-readable-output also has two optional settings hooks, a SessionStart prompt and a Stop check. See its README.
+readable-output also ships the Readable output style, which asks Claude for the reply format. Turn it on per project with `"outputStyle": "readable-output:Readable"`. See its README.
