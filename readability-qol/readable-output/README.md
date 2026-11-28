@@ -2,7 +2,7 @@
 
 Makes Claude's replies easy to read, and its asks easy to answer, in the terminal and on the phone.
 
-The SessionStart hook below tells Claude two things, in about 300 words:
+The Readable output style (`output-styles/readable.md`) tells Claude two things, in about 300 words. It is the one place this text lives. An output style is part of the instructions sent with every request, so the format holds in long sessions, where SessionStart context drifts out of reach:
 
 - **Most replies are prose.** A short lead line, then a bold label or small heading per topic, short paragraphs with a blank line between each, and key facts (numbers, dates, names, outcomes, risks) in bold, so reply-colors can colour them.
 - **Each ask goes in a fenced `ask` block.** Only when a reply asks the user to decide something. The first line is a plain-word title, then labelled parts: a type, a recommendation, "Yes means" and "No means", the parts for that type, and a Ref line for code names.
@@ -52,15 +52,15 @@ Replies written before 0.6.0 put numbered asks under a "### Needs you" heading. 
 
 reply-colors is optional. Install readable-output with project scope to keep it to one project.
 
-The SessionStart command hook gives Claude the reply guidance. Add it by hand to that project's `.claude/settings.json`. It needs Node 22.6 or later. Point it at the installed copy, `~/.claude/plugins/cache/claude-mods/readable-output/<version>/`, or at a checkout:
+The plugin ships the Readable output style. Turn it on in that project's `.claude/settings.json`, so other projects keep their own style:
 
 ```json
-"hooks": {
-  "SessionStart": [{ "hooks": [{ "type": "command", "command": "node <readable-output folder>/bin/session-start.ts || true", "timeout": 10 }] }]
-}
+"outputStyle": "readable-output:Readable"
 ```
 
-`bin/stop-check.ts` is kept empty so an older Stop entry that still points at it does nothing. It never sends a reply back. Delete that entry when convenient.
+The style keeps Claude Code's coding instructions (`keep-coding-instructions: true`). Claude Code reads style files when it starts, so restart after an update. `/output-style` lists the styles and marks the active one.
+
+`bin/session-start.ts` and `bin/stop-check.ts` are kept empty, so an older SessionStart or Stop entry that still points at them does nothing and the text is never sent twice. Delete those entries when convenient.
 
 ## Example
 
@@ -81,7 +81,7 @@ is drawn as one card with a progress bar, each part under a bold label, the GO L
 
 ## Turn it off
 
-- Everything: delete the SessionStart entry that mentions `readable-output`, then `claude plugin uninstall readable-output@claude-mods --scope project`.
+- Everything: delete the `outputStyle` line, then `claude plugin uninstall readable-output@claude-mods --scope project`.
 - Only the card: `claude plugin disable readable-output@claude-mods --scope project`. Claude still writes ask blocks, which then show as plain text.
 
 ## Check it
